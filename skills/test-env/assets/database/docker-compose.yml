@@ -1,0 +1,85 @@
+# ============================================================
+# Executor 包独立测试环境（三数据库）
+# ============================================================
+# 拆为独立 go mod 后使用此文件启动所有数据库容器。
+# 当前（在 rblogserver 内）仍使用仓库根目录的 scripts/docker-compose.yml。
+#
+# 密码统一：Test@1234（TiDB 使用 root 免密）
+#
+# ── 平台适配说明 ──
+# 统一使用 opengauss:7.0.0-RC3 镜像，Linux / WSL / ARM64 UMA 均可直接使用。
+#   docker compose up -d
+#
+# ── 三个数据库后端 ──
+#   mysql             openGauss                  TiDB unistore
+#   ────────────────  ──────────────────────  ──────────────────────
+#   port 3306         port 5432               port 4000
+#   AUTO_INCREMENT    BIGSERIAL               AUTO_INCREMENT
+#   PRIMARY KEY 支持    PRIMARY KEY 支持          PRIMARY KEY 支持
+#   行存              行/列存（由建表 SQL 指定）   行存（unistore 单容器）
+#   无 shm 要求        shm_size: 1g            无 shm 要求
+#   不需要 privileged  需要 privileged           不需要 privileged
+#   healthcheck: ping healthcheck: gsql        healthcheck: wget
+#   资源 2C/2G         资源 2C/2G               资源 2C/2G
+#
+# TiDB 完整集群（PD + TiKV + TiFlash）见 06-数据库/TiDB/docs/tidb-deploy-troubleshooting.md
+#
+# 使用:
+#   docker compose up -d
+#   go test -bench=. -benchmem -run='^$' -benchtime=5s .
+
+services:
+  mysql:
+    container_name: mysql
+    image: mysql:5.7.34
+    environment:
+      MYSQL_ROOT_PASSWORD: Test@1234
+      MYSQL_DATABASE: "test_db"
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./init.mysql.sql:/docker-entrypoint-initdb.d/init.mysql.sql
+    # 关键配置：buffer_pool 1G + 连接数 500 + 双 1 刷盘（默认事务安全）
+    command: >
+      --innodb_buffer_pool_size=1G
+      --max_connections=500
+      --innodb_flush_log_at_trx_commit=1
+      --innodb_log_file_size=256M
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pTest@1234"]
+      interval: 10s
+      retries: 5
+
+  opengauss:
+    container_name: opengauss
+    image: opengauss:7.0.0-RC3
+    environment:
+      GS_PASSWORD: Test@1234
+    ports:
+      - "5432:5432"
+    shm_size: 1g
+    privileged: true
+    volumes:
+      - ./init.opengauss.sql:/docker-entrypoint-initdb.d/init.opengauss.sql
+      # nacos_config 库 schema 自动初始化 (建用户/库 + DDL + GRANT + now(int) + DROP NOT NULL)
+      - ./init.nacos.sql:/docker-entrypoint-initdb.d/init.nacos.sql
+    healthcheck:
+      test: ["CMD-SHELL", "LD_LIBRARY_PATH=/usr/local/opengauss/lib /usr/local/opengauss/bin/gsql -h localhost -U gaussdb -d postgres -W 'Test@1234' -c 'SELECT 1'"]
+      interval: 10s
+      retries: 15
+      start_period: 90s
+
+# ── TiDB unistore 模式（快速验证用途）──
+  # 单容器，资源占用小，启动快。
+  # 完整集群部署见 06-数据库/TiDB/scripts/docker-compose.yml
+
+  tidb:
+    container_name: tidb
+    image: pingcap/tidb:v8.5.0
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O /dev/null http://127.0.0.1:10080/status 2>/dev/null || exit 1"]
+      interval: 10s
+      retries: 15
+      start_period: 30s
