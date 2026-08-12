@@ -48,6 +48,21 @@
 - **用户画像及证据**（profile/advice/insight）一律存全局 `~/.config/opencode/me/`，不进入任何项目
 - `node_modules/` + `package.json` 为 opencode 运行时产物（`@opencode-ai/plugin`），保留
 
+### 记忆协同机制（事实）
+
+> 行为约束见全局 `AGENTS.md` §6；此处仅记录归属与 Git 透明事实。
+
+| 层 | 位置 | 归属 |
+|----|------|------|
+| 索引 `MEMORY.md` | 项目 `.opencode/` | 项目 |
+| 记忆 `memory/` | 项目 `.opencode/` | 项目 |
+| 任务 `tracking/` | 项目 `.opencode/` | 项目 |
+| 画像 `me/` | 全局 `~/.config/opencode/` | 全局 |
+
+- 项目记忆**永不进入全局仓库**；画像**永不进入项目**
+- **Git 透明**：四类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`me/`、`tracking/`、`memory/`
+- 沉淀管线：`/q-a 整理`（tracking 归档 + 全局 `me/insights/` 画像证据）→ `/update-profile`（画像演进）
+
 ## 开发者画像
 
 - 位置：`~/.config/opencode/me/`

@@ -53,8 +53,8 @@ Step 4: 输出连接信息 — 按 `references/connection-info.md` 中的模板�
 ### 数据库
 
 ```
-bash .opencode/skills/test-env/scripts/db.sh up mysql
 bash .opencode/skills/test-env/scripts/db.sh up opengauss
+bash .opencode/skills/test-env/scripts/db.sh up mysql
 bash .opencode/skills/test-env/scripts/db.sh up tidb
 bash .opencode/skills/test-env/scripts/db.sh up          # 全部
 ```
