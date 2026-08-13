@@ -65,19 +65,36 @@ ls ~/.claude/projects/<project-slug>/*.jsonl
 
 其中 `<project-slug>` 是将项目绝对路径中的 `/` 替换为 `-`，并在开头加 `-`。如 `/mnt/d/platform/Practice` → `-mnt-d-platform-Practice`。
 
-评估数据量后，从以下两种模式中选择并告知用户理由：
+评估数据量后，从以下三种模式中选择并告知用户理由：
 - **全量**：所有会话逐批分析。数据量可控（总原始内容 < 上下文窗口）时选用。
 - **最近一周**：数据量过大或只需反映最新习惯时选用。
+- **分块并行**（>100 会话推荐）：按时间分阶段桶 + 按字节分块（约 400KB/块），每块派只读子代理产出结构化发现（类别化条目 + 会话 id 证据），主代理聚合后进入 Step 3。参考实践：2026-08-13 301 会话分 4 桶 24 块分析。
 
 ### Step 2: 提取会话数据
 
 **2a. OpenCode 会话导出**
 
+逐会话导出（小窗口适用）：
+
 ```bash
+opencode session list -n 200 --format json   # 注意：不带 -n 时默认仅返回 20 条
 opencode export <session_id> > /tmp/session_<id>.json
 ```
 
 导出后需去除第一行（"Exporting session: ..."），剩余为 JSON。
+
+大数据量窗口（>100 会话）推荐 **sqlite 直读**（比逐会话 export 快一个量级，且可按项目精确过滤）：
+
+```bash
+python3 - << 'EOF'
+import sqlite3, json
+db = sqlite3.connect('file:~/.local/share/opencode/opencode.db?mode=ro', uri=True)
+# 项目过滤：project_directory 表找项目 id（目录路径），session 表按 project_id 取会话
+# message 表：data JSON 含 role/time；part 表：data JSON 含 type(text/tool/reasoning)
+EOF
+```
+
+表结构要点：`project_directory(directory → project_id)` → `session(id, project_id, title, directory)` → `message(session_id, time_created, data{role,time})` → `part(message_id, data{type,text,tool})`。画像分析只需 user 全文 + assistant text parts（reasoning/tool 按需）。
 
 **2b. Claude Code 会话读取**
 
@@ -293,6 +310,28 @@ Before responding, read `~/.config/opencode/me/profile.md` to understand the dev
 ```
 
 已有的 advice.md 内容同样按演进模式处理：保留仍有效的建议，更新观察数据，追加新建议。安全规则与 profile.md 相同（无仓库名/项目名/业务路径）。
+
+**升格闭环**：advice 条目若已被升格为硬规则（全局/项目 AGENTS.md），对应条目**收缩为引用**（"已升格为 AGENTS.md §N，本条保留观察证据"），不删除、不重复约束描述——单一真相源，防双源漂移。
+
+### Step 8: 规则升格（自动执行，全局规则 §8 强制流程）
+
+`/update-profile` 触发时**自动附带执行**规则自改进（见全局 `~/.config/opencode/AGENTS.md` §8）。流程：
+
+1. 从 Step 3/7 的负面信号与建议中提取**规则升格候选**：用户反复手工纠正的 / AI 结论被证伪的 / 同类错误复发的模式
+2. 候选筛选：只保留**可核查产物**类条目（命令 / 清单 / 输出 / 条件字段），每条附真实反例并回测（事发当时能否拦截）
+3. 候选清单交用户拍板（先列清单决策，禁止未经确认直接写规则）
+4. 按落层路由写入（§8 路由表）：跨项目通用 → 全局 AGENTS.md；依赖本仓库技术栈/历史 → 项目 `<cwd>/AGENTS.md`；人侧习惯 → 留 advice.md；一次性任务专属 → 项目手册/复盘文档，不入常驻
+5. 防膨胀自检（写入前逐条过）：≤2 行 + 1 行反例；grep 检查是否已有规则覆盖；只用产物名词禁用行为词；"看不懂"自检
+6. 记录对应关系：复盘文档/项目 MEMORY.md 登记"升格条目 → 落点"映射（参考 2026-08-13 analysis-migration-collab.md §E4）
+
+### Step 9: 错题回顾（自动执行，全局规则 §9）
+
+`/update-profile` 触发时附带执行错题本维护（两层文件：`~/.config/opencode/mistakes.md` 档案层 + `positive-rules.md` 注入层）：
+
+1. **补漏扫描**：读 `mistakes.md` 最新条目日期作基线；sqlite ro 扫基线后新会话（方法同 Step 2a）。信号：用户纠正措辞（不对/错了/又/早就说过）、AI 认错（确实/抱歉/我的错）、同一命令反复失败 → 候选条目**直接写入** `mistakes.md` 与 `positive-rules.md`（注入层 AI 自治，无需拍板），在回顾总结中列出供用户知情；仅 Step 8 硬规则升格候选交用户拍板
+2. **沉淀更新（自主执行，禁止平铺堆积）**：对 `positive-rules.md` 归并重组——合并同场景/近义条目、重排分类、压缩冗长、删除失效条目；`mistakes.md` 中超过半年且未升格的条目压缩为一行（日期 + 摘要）；`positive-rules.md` 超 ~100 行强制清理
+3. **进化升格**：复发 ≥2 次的错题条目 → 按 §8 落层路由升格为硬规则；两文件中原条目压缩为一行引用（"已升格 → AGENTS.md §N"），不删除
+4. 文件结构有变时同步全局 `README.md` 目录事实
 
 ## 安全规则
 

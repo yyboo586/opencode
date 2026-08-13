@@ -10,7 +10,7 @@
 | opengauss | 5432 | test_user | Test@1234 | test_db_oracle (Oracle 兼容) |
 | tidb | 4000 | test_user | Test@1234 | test_db |
 
-> 密码源定义在 `assets/database/docker-compose.yml`（自包含；与仓库根 `06-数据库/scripts/docker-compose.yml` 同步）。
+> 密码源定义在 `assets/database/docker-compose.yml`（自包含；与仓库 `06-数据库/MySQL/scripts/docker-compose.yml`、`06-数据库/openGauss/scripts/docker-compose.yml`、`06-数据库/TiDB/scripts/docker-compose.unistore.yml` 同步）。
 
 ### openGauss 自动初始化 3 个同 user 库，各用不同兼容模式
 

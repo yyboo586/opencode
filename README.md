@@ -12,7 +12,9 @@
 | `skills/` | 用户级技能（实体目录，所有项目共享） | git |
 | `commands/` | 用户级命令（实体目录，所有项目共享） | git |
 | `me/` | 开发者画像（profile.md + advice.md + insights/ + legacy-deployment/） | **gitignore，不入 git** |
-| `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖 | 本地 |
+| `mistakes.md` | 错题本档案层（错误事件流，可重复，不注入上下文） | git |
+| `positive-rules.md` | 正面指令注入层（每条唯一，经 opencode.jsonc `instructions` 每次会话原生注入） | git |
+| `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（`instructions` 字段引用 positive-rules.md） | 本地 |
 
 > 2026-08-05 起 skills/commands 为实体目录（由原软链接改为实体），所有项目共用一份，无项目级副本。
 
@@ -60,6 +62,18 @@
 | 画像 `me/` | 全局 `~/.config/opencode/` | 全局 |
 
 - 项目记忆**永不进入全局仓库**；画像**永不进入项目**
+
+### 错题本机制（事实）
+
+> 行为约束见全局 `AGENTS.md` §9；此处仅记录归属与注入事实。
+
+| 层 | 文件 | 内容 | 注入 |
+|----|------|------|------|
+| 档案层 | `mistakes.md` | 错误事件流（可重复，重复次数=升格信号） | 否 |
+| 注入层 | `positive-rules.md` | 正面指令状态表（每条唯一） | 经 `opencode.jsonc` `instructions` 每次会话原生注入 |
+
+- 捕捉：被纠正/假设证伪/同坑复发时实时双写（见 §9）
+- 回顾：`/update-profile` Step 9 补漏扫描 + 去重压缩 + 复发≥2 次升格为 §8 硬规则
 - **Git 透明**：四类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`me/`、`tracking/`、`memory/`
 - 沉淀管线：`/q-a 整理`（tracking 归档 + 全局 `me/insights/` 画像证据）→ `/update-profile`（画像演进）
 

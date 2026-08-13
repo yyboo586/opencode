@@ -1,7 +1,7 @@
 #!/bin/bash
 # db-env.sh — 数据库环境管理（自包含封装）
 # ============================================================
-# 与仓库根 scripts/db-env.sh 等价，但资源全部位于 assets/database/
+# 与仓库 06-数据库 各库 scripts/（MySQL/scripts/env.sh、openGauss/scripts/deploy.sh、TiDB/scripts/env.sh）等价，但资源全部位于 assets/database/
 # 用法:
 #   ./scripts/db.sh up                  # 启动全部三个数据库
 #   ./scripts/db.sh up mysql            # 启动指定数据库
