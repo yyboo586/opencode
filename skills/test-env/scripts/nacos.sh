@@ -71,7 +71,7 @@ docker run -d --name "$CONTAINER_NAME" \
     -e JVM_XMX=1g \
     -e JVM_XMS=1g \
     -e JVM_XMN=512m \
-    -e NACOS_AUTH_ENABLE=true \
+    -e NACOS_AUTH_ENABLE=false \
     -p "${NACOS_SERVER_PORT}:8848" \
     -p "${NACOS_GRPC_PORT}:9848" \
     --add-host=host.docker.internal:host-gateway \

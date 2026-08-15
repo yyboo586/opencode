@@ -1,29 +1,21 @@
 ---
 name: update-profile
-description: 从本地会话数据中提取编码风格、沟通偏好、思维模式，生成或更新开发者画像。触发 /update-profile
+description: 从本地会话数据提取编码风格/沟通偏好/思维模式生成或更新开发者画像，附带执行规则自改进（§8 升格候选→用户拍板→落层路由）与错题本维护（§9 补漏扫描+注入层归并+skill 规则提取）。触发 /update-profile 或用户要求更新画像
 ---
 
 # update-profile — 开发者画像生成（演进模式）
 
-> 支持 OpenCode CLI 和 Claude Code CLI 两种本地会话源。
+> 数据源：OpenCode CLI 本地会话。
 
 ## 触发
 
-用户说 `/update-profile` 或 "更新画像"。
-
-可选参数：
-
-| 命令 | 数据源 |
-|------|--------|
-| `/update-profile` | 仅 OpenCode 会话（默认） |
-| `/update-profile --claude` | 仅 Claude Code 会话 |
-| `/update-profile --both` | 两种来源合并分析 |
+用户说 `/update-profile` 或 "更新用户画像"。
 
 ## 设计原则
 
-画像采用**演进模式**而非覆盖重写。支持 OpenCode 和 Claude Code 双源。每次运行：
+画像采用**演进模式**而非覆盖重写。每次运行：
 1. 读取现有画像（`~/.config/opencode/me/profile.md`）作为基线
-2. 从指定数据源提取会话（支持 opencode/claude/both）
+2. 从 OpenCode 会话提取数据
 3. 分析新会话数据，与基线做差量对比
 4. 合并增量（保留/深化/追加），永不自动删除已有条目
 5. 基于负面信号生成建议到 advice.md
@@ -49,7 +41,7 @@ description: 从本地会话数据中提取编码风格、沟通偏好、思维�
 
 **1a. 确定数据来源**
 
-根据用户指令决定分析哪个 CLI 的会话：仅 opencode（默认）、仅 claude、或 both。
+数据源为 OpenCode 本地会话（`~/.local/share/opencode/opencode.db`）。
 
 **1b. 确定时间范围**
 
@@ -57,13 +49,6 @@ OpenCode 会话列表:
 ```bash
 opencode session list
 ```
-
-Claude Code 会话列表（直接读文件）:
-```bash
-ls ~/.claude/projects/<project-slug>/*.jsonl
-```
-
-其中 `<project-slug>` 是将项目绝对路径中的 `/` 替换为 `-`，并在开头加 `-`。如 `/mnt/d/platform/Practice` → `-mnt-d-platform-Practice`。
 
 评估数据量后，从以下三种模式中选择并告知用户理由：
 - **全量**：所有会话逐批分析。数据量可控（总原始内容 < 上下文窗口）时选用。
@@ -96,56 +81,17 @@ EOF
 
 表结构要点：`project_directory(directory → project_id)` → `session(id, project_id, title, directory)` → `message(session_id, time_created, data{role,time})` → `part(message_id, data{type,text,tool})`。画像分析只需 user 全文 + assistant text parts（reasoning/tool 按需）。
 
-**2b. Claude Code 会话读取**
+**2b. 统一消息流**
 
-Claude Code 没有导出命令，直接读取 `~/.claude/projects/<project-slug>/*.jsonl` 文件。
-
-文件名格式: `<uuid>.jsonl`，每个文件是一个会话。
-
-JSONL 解析规则:
-
-```python
-for line in file:
-    d = json.loads(line.strip())
-    t = d.get('type')
-    if t == 'user':
-        # 用户消息
-        msg = d.get('message', {})
-        content = msg.get('content', [])  # list of {type: "text", text: "..."}
-        text = ' '.join(c['text'] for c in content if c.get('type') == 'text')
-        role = 'user'
-    elif t == 'assistant':
-        # AI 消息
-        msg = d.get('message', {})
-        content = msg.get('content', [])
-        text = ' '.join(c['text'] for c in content if c.get('type') == 'text')
-        role = 'assistant'
-    elif t == 'ai-title':
-        # 会话标题
-        title = d.get('aiTitle', '')
-    else:
-        continue  # 跳过 mode/permission/file-history-snapshot 等
-```
-
-关键字段:
-- `type`: `"user"` / `"assistant"` / `"ai-title"`
-- `message.content`: `[{type: "text", text: "..."}, ...]`
-- `timestamp`: ISO 8601 字符串（如 `"2026-06-30T01:02:43.661Z"`），不是 Unix 毫秒。部分非消息行（mode/permission 等）无 timestamp
-- `cwd`: 工作目录
-
-**2c. 统一消息流**
-
-两种来源的消息统一为以下中间格式，后续分析步骤对此无感知:
+OpenCode 会话消息统一为以下中间格式，后续分析步骤对此无感知:
 
 ```json
 [{"role": "user", "text": "...", "timestamp_epoch": 1720000000, "session_title": "..."}]
 ```
 
-时间戳统一为 epoch 秒:
-- OpenCode: `msg.info.time.created / 1000`
-- Claude Code: `datetime.fromisoformat(d.timestamp.replace('Z', '+00:00')).timestamp()`
+时间戳统一为 epoch 秒: `msg.info.time.created / 1000`
 
-**2d. 日期筛选**
+**2c. 日期筛选**
 
 从统一消息流中按用户指定的日期范围筛选。只保留有实质性技术讨论的会话（≥3 轮用户提问且非问候/天气）。
 
@@ -331,7 +277,8 @@ Before responding, read `~/.config/opencode/me/profile.md` to understand the dev
 1. **补漏扫描**：读 `mistakes.md` 最新条目日期作基线；sqlite ro 扫基线后新会话（方法同 Step 2a）。信号：用户纠正措辞（不对/错了/又/早就说过）、AI 认错（确实/抱歉/我的错）、同一命令反复失败 → 候选条目**直接写入** `mistakes.md` 与 `positive-rules.md`（注入层 AI 自治，无需拍板），在回顾总结中列出供用户知情；仅 Step 8 硬规则升格候选交用户拍板
 2. **沉淀更新（自主执行，禁止平铺堆积）**：对 `positive-rules.md` 归并重组——合并同场景/近义条目、重排分类、压缩冗长、删除失效条目；`mistakes.md` 中超过半年且未升格的条目压缩为一行（日期 + 摘要）；`positive-rules.md` 超 ~100 行强制清理
 3. **进化升格**：复发 ≥2 次的错题条目 → 按 §8 落层路由升格为硬规则；两文件中原条目压缩为一行引用（"已升格 → AGENTS.md §N"），不删除
-4. 文件结构有变时同步全局 `README.md` 目录事实
+4. **skill 规则提取（全局规则 §9 第三个来源）**：遍历 `~/.config/opencode/skills/*/SKILL.md`，逐条审查 CAUTION 块 / 强制规则 / 高频坑，按判据"这条规则是否会在**用户没提到该 skill 域**的任务中被违反？"提取通用规则到 `positive-rules.md`（附源标注 `(from <skill-name>)`，归并逻辑与另两来源统一）；**只写注入层，不改 skill 原文**；skill 更新时按源标注回查同步
+5. 文件结构有变时同步全局 `README.md` 目录事实
 
 ## 安全规则
 

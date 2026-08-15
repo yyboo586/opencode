@@ -58,13 +58,5 @@ export const MemorySync = async ({ directory }) => {
       lastRemindAt.set(sessionID, now);
       output.output = (output.output ?? "") + REMINDER;
     },
-
-    // ── 兜底：会话空闲时最后检查（仅记录，供后续复盘；无法注入模型上下文）──
-    event: async ({ event }) => {
-      if (!enabled) return;
-      if (event.type === "session.idle") {
-        console.log("[memory-sync] session.idle: 请确认本会话新认知已同步 .opencode/（MEMORY.md / tracking/）");
-      }
-    },
   };
 };

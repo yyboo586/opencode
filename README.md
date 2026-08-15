@@ -9,14 +9,16 @@
 |------|------|---------|
 | `AGENTS.md` | AI 行为约束（跨项目通用规则，所有项目生效） | git |
 | `README.md` | 事实说明（本文件，目录结构唯一真相源） | git |
-| `skills/` | 用户级技能（实体目录，所有项目共享） | git |
-| `commands/` | 用户级命令（实体目录，所有项目共享） | git |
+| `skills/` | 用户级技能（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
+| `commands/` | 用户级命令（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
 | `me/` | 开发者画像（profile.md + advice.md + insights/ + legacy-deployment/） | **gitignore，不入 git** |
 | `mistakes.md` | 错题本档案层（错误事件流，可重复，不注入上下文） | git |
 | `positive-rules.md` | 正面指令注入层（每条唯一，经 opencode.jsonc `instructions` 每次会话原生注入） | git |
 | `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（`instructions` 字段引用 positive-rules.md） | 本地 |
 
 > 2026-08-05 起 skills/commands 为实体目录（由原软链接改为实体），所有项目共用一份，无项目级副本。
+>
+> 2026-08-14 起 **openspec 系列除外**：openspec skills/commands 不入全局，由各项目按需自装（`openspec update` 生成到项目 `.opencode/skills/` + `.opencode/command/opsx-*.md`，随 Git 归档，见全局 AGENTS.md §3）。
 
 ## 工作区结构
 

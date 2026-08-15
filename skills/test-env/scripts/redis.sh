@@ -26,6 +26,7 @@ docker run -d \
     -p "$REDIS_PORT":6379 \
     -v "$REDIS_DIR/redis.conf":/etc/redis/redis.conf \
     -v "$REDIS_DIR/entrypoint.sh":/usr/local/bin/entrypoint.sh:ro \
+    -v /tmp/logs:/tmp/logs \
     redis:7.4-alpine /usr/local/bin/entrypoint.sh
 
 echo "Redis 测试环境就绪 (localhost:$REDIS_PORT)"
