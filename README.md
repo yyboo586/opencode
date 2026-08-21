@@ -8,17 +8,16 @@
 | 条目 | 职责 | 版本管理 |
 |------|------|---------|
 | `AGENTS.md` | AI 行为约束（跨项目通用规则，所有项目生效） | git |
+| `memory-mechanism.md` | 记忆协同机制全文（AGENTS.md 独立，经 `instructions` 每次会话注入） | git |
 | `README.md` | 事实说明（本文件，目录结构唯一真相源） | git |
 | `skills/` | 用户级技能（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
 | `commands/` | 用户级命令（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
 | `me/` | 开发者画像（profile.md + advice.md + insights/ + legacy-deployment/） | **gitignore，不入 git** |
-| `mistakes.md` | 错题本档案层（错误事件流，可重复，不注入上下文） | git |
-| `positive-rules.md` | 正面指令注入层（每条唯一，经 opencode.jsonc `instructions` 每次会话原生注入） | git |
-| `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（`instructions` 字段引用 positive-rules.md） | 本地 |
+| `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（`instructions` 字段引用 memory-mechanism.md） | 本地 |
 
 > 2026-08-05 起 skills/commands 为实体目录（由原软链接改为实体），所有项目共用一份，无项目级副本。
 >
-> 2026-08-14 起 **openspec 系列除外**：openspec skills/commands 不入全局，由各项目按需自装（`openspec update` 生成到项目 `.opencode/skills/` + `.opencode/command/opsx-*.md`，随 Git 归档，见全局 AGENTS.md §3）。
+> 2026-08-14 起 **openspec 系列除外**：openspec skills/commands 不入全局，由各项目按需自装（`openspec update` 生成到项目 `.opencode/skills/` + `.opencode/command/opsx-*.md`，随 Git 归档）。
 
 ## 工作区结构
 
@@ -54,7 +53,7 @@
 
 ### 记忆协同机制（事实）
 
-> 行为约束见全局 `AGENTS.md` §6；此处仅记录归属与 Git 透明事实。
+> 行为约束见 `memory-mechanism.md`；此处仅记录归属与 Git 透明事实。
 
 | 层 | 位置 | 归属 |
 |----|------|------|
@@ -65,18 +64,8 @@
 
 - 项目记忆**永不进入全局仓库**；画像**永不进入项目**
 
-### 错题本机制（事实）
-
-> 行为约束见全局 `AGENTS.md` §9；此处仅记录归属与注入事实。
-
-| 层 | 文件 | 内容 | 注入 |
-|----|------|------|------|
-| 档案层 | `mistakes.md` | 错误事件流（可重复，重复次数=升格信号） | 否 |
-| 注入层 | `positive-rules.md` | 正面指令状态表（每条唯一） | 经 `opencode.jsonc` `instructions` 每次会话原生注入 |
-
-- 捕捉：被纠正/假设证伪/同坑复发时实时双写（见 §9）
-- 回顾：`/update-profile` Step 9 补漏扫描 + 去重压缩 + 复发≥2 次升格为 §8 硬规则
-- **Git 透明**：四类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`me/`、`tracking/`、`memory/`
+- **Git 透明（默认）**：四类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`me/`、`tracking/`、`memory/`
+- **特例：Practice 仓库记忆层（MEMORY.md / memory/ / tracking/）随 Git 归档**（2026-08-18 起），其余仓库维持透明
 - 沉淀管线：`/q-a 整理`（tracking 归档 + 全局 `me/insights/` 画像证据）→ `/update-profile`（画像演进）
 
 ## 开发者画像

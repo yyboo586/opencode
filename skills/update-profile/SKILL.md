@@ -1,6 +1,6 @@
 ---
 name: update-profile
-description: 从本地会话数据提取编码风格/沟通偏好/思维模式生成或更新开发者画像，附带执行规则自改进（§8 升格候选→用户拍板→落层路由）与错题本维护（§9 补漏扫描+注入层归并+skill 规则提取）。触发 /update-profile 或用户要求更新画像
+description: 从本地会话数据提取编码风格/沟通偏好/思维模式生成或更新开发者画像，附带执行规则升格（Step 8 候选→用户拍板→落层路由）与规则维护回顾（Step 9 归并重组+skill 规则提取+机械统计展示）。触发 /update-profile 或用户要求更新画像
 ---
 
 # update-profile — 开发者画像生成（演进模式）
@@ -80,6 +80,44 @@ EOF
 ```
 
 表结构要点：`project_directory(directory → project_id)` → `session(id, project_id, title, directory)` → `message(session_id, time_created, data{role,time})` → `part(message_id, data{type,text,tool})`。画像分析只需 user 全文 + assistant text parts（reasoning/tool 按需）。
+
+**2a-修正（2026-08-19 实测）**：
+- `message.data` 仅含 role/time/agent/model 元数据，**不含正文**；用户正文在 **`event` 表**（type=`message.part.updated.1`，data JSON 的 `part.text`，`synthetic:true` 为工具回显需过滤；~41k 条/758 会话）
+- `part` 表只有最近数据（其余在 event 历史），错误状态在 `part.data.state.status='error'` 且 state 含 `time.start`
+- 错误聚合查询模板（机械统计前置，直接可跑）：
+
+```bash
+python3 - << 'EOF'
+import sqlite3, json
+from collections import Counter
+db = sqlite3.connect('file:~/.local/share/opencode/opencode.db?mode=ro', uri=True)
+c = db.cursor()
+# 按 tool+错误模式聚类（state.status='error'）
+errs = Counter()
+for (d,) in c.execute("SELECT data FROM part WHERE data LIKE '%\"error\"%'"):
+    j = json.loads(d)
+    if j.get('type') != 'tool': continue
+    st = j.get('state') or {}
+    if st.get('status') != 'error': continue
+    e = st.get('error') or ''
+    # 清洗：去数字/路径/URL 后聚合
+    errs[(j.get('tool'), e[:60])] += 1
+for k, n in errs.most_common(15): print(n, k)
+EOF
+```
+
+**2d. 机械统计前置（可选，增量价值已验证）**
+
+画像定性分析之前，先跑机械指标（见 2a 模板），产出以下信号供 Step 3 负面信号/Step 7 建议/Step 8 升格候选使用（2026-08-19 试点实证：均机械可复现）：
+
+| 指标 | 查询 | 试点发现 |
+|------|------|---------|
+| 模型 × 错误密度 | session.model join 会话错误数 | MiniMax-M3 1.59/会话 vs deepseek-v4-pro 0.65；MiniMax edit 错误占比 47% vs glm 10% |
+| 工具错误聚类 | 2a 模板 | edit-oldString 153 次（3 个月） |
+| 规则期错误密度 | 按 AGENTS.md 规则写入日切分 | §6 写入后 edit 错误密度 1.68→2.46/天（**2026-08-19 修正：密度指标误判——调用量同期涨 5 倍，错误率 3.8%→2.2% 实际下降，规则有效；效果判定用错误率不用密度**） |
+| skill 调用 × 错误率 | skill part join 错误 | investigate 1.07/会话 vs test-env 3.16 |
+| 同会话错误重复 | 按会话聚合 | edit-oldString 41% 会话内重复≥2 次（举一反三缺口定量化） |
+| 用户纠正信号 | event 表 text + 纠正措辞正则 | 690 条/41k（4.2%），主题聚类见 Step 3 维度 |
 
 **2b. 统一消息流**
 
@@ -259,26 +297,28 @@ Before responding, read `~/.config/opencode/me/profile.md` to understand the dev
 
 **升格闭环**：advice 条目若已被升格为硬规则（全局/项目 AGENTS.md），对应条目**收缩为引用**（"已升格为 AGENTS.md §N，本条保留观察证据"），不删除、不重复约束描述——单一真相源，防双源漂移。
 
-### Step 8: 规则升格（自动执行，全局规则 §8 强制流程）
+### Step 8: 规则升格（自动执行，机制单一真相源在本 skill）
 
-`/update-profile` 触发时**自动附带执行**规则自改进（见全局 `~/.config/opencode/AGENTS.md` §8）。流程：
+`/update-profile` 触发时自动附带执行规则自改进。流程：
 
 1. 从 Step 3/7 的负面信号与建议中提取**规则升格候选**：用户反复手工纠正的 / AI 结论被证伪的 / 同类错误复发的模式
 2. 候选筛选：只保留**可核查产物**类条目（命令 / 清单 / 输出 / 条件字段），每条附真实反例并回测（事发当时能否拦截）
 3. 候选清单交用户拍板（先列清单决策，禁止未经确认直接写规则）
-4. 按落层路由写入（§8 路由表）：跨项目通用 → 全局 AGENTS.md；依赖本仓库技术栈/历史 → 项目 `<cwd>/AGENTS.md`；人侧习惯 → 留 advice.md；一次性任务专属 → 项目手册/复盘文档，不入常驻
+4. 按落层路由写入：跨项目通用 → 全局 AGENTS.md；依赖本仓库技术栈/历史 → 项目 `<cwd>/AGENTS.md`；人侧习惯 → 留 advice.md；一次性任务专属 → 项目手册/复盘文档，不入常驻
 5. 防膨胀自检（写入前逐条过）：≤2 行 + 1 行反例；grep 检查是否已有规则覆盖；只用产物名词禁用行为词；"看不懂"自检
-6. 记录对应关系：复盘文档/项目 MEMORY.md 登记"升格条目 → 落点"映射（参考 2026-08-13 analysis-migration-collab.md §E4）
+6. **登记效果基线**：写入时按 2d 机械统计登记该模式的历史错误率（如"edit-oldString 错误率 3.8%"），复盘时对比——基线后错误率不降或上升 → 标记"规则无效→换机制"，换机制（钩子/权限/结构）而非再加文字规则。**效果判定用错误率（错误/总调用）不用密度（错误/天）**——试点实证：edit 纪律写入后错误率 3.8%→2.2% 实际下降（2026-08-19 修正：此前按密度 1.68→2.46/天 误判为无效，实为调用量同期涨 5 倍）
+7. 记录对应关系：复盘文档/项目 MEMORY.md 登记"升格条目 → 落点"映射（参考 2026-08-13 analysis-migration-collab.md §E4）
 
-### Step 9: 错题回顾（自动执行，全局规则 §9）
+> **规则写入权限**：规则升格候选必须交用户拍板；`AGENTS.md` §7/§8 的归并重组（Step 9）可自主执行。用户手动整理规则时，AI 只做数据提供（2d 机械统计）与格式辅助，不自动写入规则。
 
-`/update-profile` 触发时附带执行错题本维护（两层文件：`~/.config/opencode/mistakes.md` 档案层 + `positive-rules.md` 注入层）：
+### Step 9: 规则维护回顾（自动执行）
 
-1. **补漏扫描**：读 `mistakes.md` 最新条目日期作基线；sqlite ro 扫基线后新会话（方法同 Step 2a）。信号：用户纠正措辞（不对/错了/又/早就说过）、AI 认错（确实/抱歉/我的错）、同一命令反复失败 → 候选条目**直接写入** `mistakes.md` 与 `positive-rules.md`（注入层 AI 自治，无需拍板），在回顾总结中列出供用户知情；仅 Step 8 硬规则升格候选交用户拍板
-2. **沉淀更新（自主执行，禁止平铺堆积）**：对 `positive-rules.md` 归并重组——合并同场景/近义条目、重排分类、压缩冗长、删除失效条目；`mistakes.md` 中超过半年且未升格的条目压缩为一行（日期 + 摘要）；`positive-rules.md` 超 ~100 行强制清理
-3. **进化升格**：复发 ≥2 次的错题条目 → 按 §8 落层路由升格为硬规则；两文件中原条目压缩为一行引用（"已升格 → AGENTS.md §N"），不删除
-4. **skill 规则提取（全局规则 §9 第三个来源）**：遍历 `~/.config/opencode/skills/*/SKILL.md`，逐条审查 CAUTION 块 / 强制规则 / 高频坑，按判据"这条规则是否会在**用户没提到该 skill 域**的任务中被违反？"提取通用规则到 `positive-rules.md`（附源标注 `(from <skill-name>)`，归并逻辑与另两来源统一）；**只写注入层，不改 skill 原文**；skill 更新时按源标注回查同步
-5. 文件结构有变时同步全局 `README.md` 目录事实
+`/update-profile` 触发时附带执行 `AGENTS.md` §7/§8 维护（规则本体，经 `opencode.jsonc` `instructions` 每次会话原生注入）：
+
+1. **机械统计展示（与 2d 联动）**：跑 2d 机械统计（工具错误率 / 错误聚类 / 规则期错误率），输出数据供用户手动整理规则时参考——只展示，不自动写入
+2. **沉淀更新（自主执行，禁止平铺堆积）**：对 `AGENTS.md` §7/§8 归并重组——合并同场景/近义条目、重排分类、压缩冗长、删除失效条目
+3. **skill 规则提取（第三个来源）**：遍历 `~/.config/opencode/skills/*/SKILL.md`，逐条审查 CAUTION 块 / 强制规则 / 高频坑，按判据"这条规则是否会在**用户没提到该 skill 域**的任务中被违反？"提取通用规则到 `AGENTS.md` §7/§8（附源标注 `(from <skill-name>)`，归并逻辑统一）；**只写 AGENTS.md，不改 skill 原文**；skill 更新时按源标注回查同步
+4. 文件结构有变时同步全局 `README.md` 目录事实
 
 ## 安全规则
 

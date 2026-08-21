@@ -120,7 +120,7 @@ bash .opencode/skills/test-env/scripts/emqx.sh
 
 ## 部署后访问（docker exec）
 
-部署完成后按组件选对应的进入方式。**MySQL / TiDB / Redis / Nacos / EMQX 都是普通 CLI**，直接 `docker exec -it` 即可；**openGauss 是特例**：`gsql` 不在 PATH，必须带 `LD_LIBRARY_PATH`。
+部署完成后按组件选对应的进入方式。**MySQL / TiDB / Redis / Nacos / EMQX 都是普通 CLI**，直接 `docker exec -it` 即可；**openGauss 是特例**：`gsql` 不在 PATH，必须带 `LD_LIBRARY_PATH`。给用户生产/目标机命令前先核对环境（如部署机 uname -m、busybox 无 pidof -f、容器名 docker ps 实测），不套本地经验（教训：busybox 无 pidof -f 按本地习惯给命令）。
 
 ### 直连类（一行命令即可）
 

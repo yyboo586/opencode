@@ -22,6 +22,8 @@ description: openGauss 日常操作知识（建库/授权/gsql/元数据查询/�
 
 **所有 openGauss 操作默认在 PG 兼容库（test_db_pg）执行**。仅用户明确指定其他兼容模式（B/A）时才切换库。
 
+**方言断言先实测**：openGauss 行为（SQL 语法/数据类型/索引机制）与 MySQL 或标准 PG 有差异，先建表实验/SHOW/最小复现验证再下结论，未验证显式标注"待验证"（教训：假设方言语法支持 → 生产 SQL 报错）。
+
 ## 场景速查
 
 ### 容器内 gsql 连接
@@ -35,6 +37,7 @@ docker exec -it opengauss bash -c \
 
 - `-h localhost` 强制走 TCP，避免 socket 认证问题
 - 默认连 test_db_pg（PG 兼容）；切换兼容模式 = 只换 `-d` 库名（test_db_pg / test_db_mysql / test_db_oracle）
+- 容器内执行前先确认执行环境与监听地址（教训：容器内连宿主机映射端口必 refused；gsql command not found 需绝对路径）
 
 ### 初始化配置（建库 / 授权 / Search Path）
 
