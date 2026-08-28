@@ -107,7 +107,7 @@ description: 会话整理：提取会话中的踩坑/设计决策/需求分析�
 - 文件命名：`<type>-<简短描述>.md`，如 `debug-og-write-timeout.md`
 - 如果同主题文件已存在，**追加**新 Q-A 到文件末尾（`---` 分隔），不覆盖
 - 首次写入前确保目标目录存在（项目 `./.opencode/tracking/`）
-- **写入后同步 `./.opencode/MEMORY.md` 索引**（`memory-mechanism.md` 强制）：新任务条目 → 「Tracking — 进行中」；完成态条目 → 「### 已处理/已归档」小节（压缩一行）；新增 memory/ 级文档 → 「Memory」节
+- **写入后同步 `./.opencode/MEMORY.md` 索引**（`memory-mechanism.md` 强制）：新任务条目 → 「Tracking — 进行中」；新增 memory/ 级文档 → 「Memory」节；条目位置（进行中 / 已归档 / 删除）由用户手动决定
 
 ---
 
