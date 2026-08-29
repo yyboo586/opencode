@@ -1,11 +1,13 @@
 ---
 name: test-env
-description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Redis、Nacos、EMQX 测试环境。资源全部在 assets/，目录自包含。触发：起环境 / 部署测试环境 / 启动 mysql / 启动 nacos / 启动 redis / 启动 opengauss / 启动 tidb / 启动 emqx / 环境状态 / 停环境
+description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Mongo、Redis、Nacos、EMQX 测试环境。资源全部在 assets/，目录自包含。触发：起环境 / 部署测试环境 / 启动 mysql / 启动 nacos / 启动 redis / 启动 opengauss / 启动 tidb / 启动 mongo / 启动 emqx / 环境状态 / 停环境
 ---
 
 # test-env
 
 > 目录自包含：Compose、SQL、配置、JAR、安装脚本全部位于本目录的 `assets/`。脚本调用一律走 `SCRIPT_DIR/../assets/...`，**不依赖仓库根 `06-数据库/`、`22-Redis/`、`25-Nacos/`、`26-EMQX/`**。
+>
+> **部署规则（2026-08-29 起全组件统一）**：同名容器已存在（无论运行/停止）→ 换名换端口新部署（`<name>-2`、`<name>-3`…，端口自动探测避让），**绝不复用/删除已有容器**；**所有容器不挂载主机目录**（配置注入走 docker cp 或环境变量）。共享函数见 `scripts/lib-deploy.sh`（next_name / free_port）。
 
 ## 触发方式
 
@@ -15,10 +17,11 @@ description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Redis、Naco
 |----------|------|
 | "启动 mysql" / "起个 mysql" | 检测 → 启动 MySQL → 输出连接信息 |
 | "启动 nacos" / "部署 nacos" | 先确认 openGauss 已运行 → 启动 Nacos |
-| "启动 redis" | 检测 → 启动 Redis |
-| "启动 emqx" / "部署 emqx" | 检测 → 启动 EMQX |
+| "启动 redis" | 检测 → 启动 Redis（同名存在则换名换端口新部署） |
+| "启动 mongo" / "起个 mongo" | 检测 → 启动 Mongo（认证模式，同名存在则换名换端口新部署） |
+| "启动 emqx" / "部署 emqx" | 检测 → 启动 EMQX（同名存在则换名换端口新部署） |
 | "环境状态" / "看看环境" | 运行 `scripts/status.sh` 查看所有组件 |
-| "停环境" / "关环境" | 确认后运行 `scripts/down.sh` |
+| "停环境" / "关环境" | 确认后运行 `scripts/down.sh`（只停本脚本部署的实例，不碰用户已有容器） |
 | "起环境" / 未指定组件 | 启动全部组件（数据库 + Redis + Nacos + EMQX） |
 
 > **组件详情**（端口、用户名、密码、DSN、输出模板）见 `references/connection-info.md`，仅在需要输出连接信息时才加载。
@@ -56,10 +59,11 @@ Step 4: 输出连接信息 — 按 `references/connection-info.md` 中的模板�
 bash .opencode/skills/test-env/scripts/db.sh up opengauss
 bash .opencode/skills/test-env/scripts/db.sh up mysql
 bash .opencode/skills/test-env/scripts/db.sh up tidb
+bash .opencode/skills/test-env/scripts/db.sh up mongo
 bash .opencode/skills/test-env/scripts/db.sh up          # 全部
 ```
 
-`db.sh` 已封装：docker compose up -d + 健康检查轮询（MySQL/TiDB 60s，openGauss 180s）+ 初始化。AI 不重复实现健康检查。
+`db.sh` 已封装：docker compose up -d + 健康检查轮询（MySQL/TiDB/Mongo 60-90s，openGauss 180s）+ 初始化。AI 不重复实现健康检查。
 
 ### Redis
 
@@ -83,6 +87,17 @@ bash .opencode/skills/test-env/scripts/nacos.sh
 3. `assets/nacos/custom-application.properties` 存在
 
 任一失败则终止，不执行 Nacos 安装。
+
+### Mongo
+
+```
+bash .opencode/skills/test-env/scripts/mongo.sh
+# 或走 db.sh：bash .opencode/skills/test-env/scripts/db.sh up mongo
+```
+
+脚本内置：同名容器已存在（无论运行/停止）→ 换名换端口新部署（mongo-2、mongo-3…，端口 27017 起自动探测）；不挂载主机目录（init-mongo.js 就绪后 docker cp 注入执行）。root=admin/Test@12345678，业务=test_user/Test@12345678（rbiot 库）。
+
+> ⚠️ 部署规则（2026-08-29 起全组件统一）：**同名容器已存在（运行或停止）一律换名换端口新部署，绝不复用/删除已有容器；所有容器不挂载主机目录**（配置注入走 docker cp 或环境变量）。
 
 ### EMQX
 
@@ -128,6 +143,7 @@ bash .opencode/skills/test-env/scripts/emqx.sh
 |------|------|------|
 | MySQL | `docker exec -it mysql mysql -u test_user -p'Test@1234' test_db` | mysql CLI 在容器内 PATH 中 |
 | TiDB | `docker exec -it tidb mysql -h 127.0.0.1 -P 4000 -u test_user -p'Test@1234' test_db` | TiDB 容器自带 mysql 客户端 |
+| Mongo | `docker exec -it mongo mongo -u test_user -p 'Test@12345678' --authenticationDatabase rbiot rbiot` | 认证模式；root 管理操作加 `-u admin -p ... --authenticationDatabase admin` |
 | Redis | `docker exec -it redis redis-cli -a Test@1234` | entrypoint 启的就是 redis-server，CLI 同容器可用 |
 | Nacos | `curl http://localhost:8848/nacos/actuator/health` | 控制台浏览器访问；容器内无 curl 探活需求 |
 | EMQX | 浏览器 `http://localhost:18083`（admin / public） | Dashboard HTTP，无 CLI |

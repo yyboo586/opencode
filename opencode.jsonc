@@ -5,6 +5,7 @@
   "instructions": ["~/.config/opencode/memory-mechanism.md"],
   "permission": {
     "*": "allow",
+    "git stash": "deny",
     "git push": "deny"
   }
 }

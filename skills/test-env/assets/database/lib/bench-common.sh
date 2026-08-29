@@ -21,11 +21,17 @@ detect_compose_cmd() {
 wait_healthy() {
     local service=$1
     local max_wait=$2
+    local compose_file=${3:-}
     local elapsed=0
     echo "[等待] 检查 $service 健康状态..."
     while [ $elapsed -lt $max_wait ]; do
         local cid
-        cid=$($COMPOSE_CMD ps -q "$service" 2>/dev/null | head -1)
+        # compose ps 必须带 -f（cwd 不在 compose 目录时找不到项目），兼容旧调用（无第三参时按原行为）
+        if [ -n "$compose_file" ]; then
+            cid=$($COMPOSE_CMD -f "$compose_file" ps -q "$service" 2>/dev/null | head -1)
+        else
+            cid=$($COMPOSE_CMD ps -q "$service" 2>/dev/null | head -1)
+        fi
         status=$(docker inspect --format='{{.State.Health.Status}}' "$cid" 2>/dev/null || echo "unknown")
         if [ "$status" = "healthy" ]; then
             echo "[OK] $service 已就绪 (等待 ${elapsed}s)"

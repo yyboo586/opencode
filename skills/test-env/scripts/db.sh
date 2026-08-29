@@ -6,7 +6,7 @@
 #   ./scripts/db.sh up                  # 启动全部三个数据库
 #   ./scripts/db.sh up mysql            # 启动指定数据库
 #   ./scripts/db.sh down                # 停止全部数据库
-# 支持的数据库: mysql, opengauss, tidb
+# 支持的数据库: mysql, opengauss, tidb（mongo 走独立脚本 mongo.sh）
 # ============================================================
 
 set -euo pipefail
@@ -21,7 +21,7 @@ detect_compose_cmd "$DB_DIR"
 usage() {
     echo "用法:"
     echo "  $0 up              # 启动全部数据库"
-    echo "  $0 up <db>         # 启动指定数据库 (mysql|opengauss|tidb)"
+    echo "  $0 up <db>         # 启动指定数据库 (mysql|opengauss|tidb；mongo 走 mongo.sh)"
     echo "  $0 down            # 停止全部数据库"
     exit 1
 }
@@ -34,11 +34,11 @@ start_db() {
     case $db in
         mysql)
             $COMPOSE_CMD -f "$COMPOSE_FILE" up -d mysql
-            wait_healthy mysql 60
+            wait_healthy mysql 60 "$COMPOSE_FILE"
             ;;
         tidb)
             $COMPOSE_CMD -f "$COMPOSE_FILE" up -d tidb
-            wait_healthy tidb 60
+            wait_healthy tidb 60 "$COMPOSE_FILE"
             # TiDB 初始化（不支持 docker-entrypoint-initdb.d）
             echo "[init] TiDB schema 初始化..."
             if command -v mysql &>/dev/null; then
@@ -49,7 +49,11 @@ start_db() {
             ;;
         opengauss)
             $COMPOSE_CMD -f "$COMPOSE_FILE" up -d opengauss
-            wait_healthy opengauss 180
+            wait_healthy opengauss 180 "$COMPOSE_FILE"
+            ;;
+        mongo)
+            # Mongo 走独立脚本（换名换端口 + 无主机挂载，见 mongo.sh）
+            bash "$SCRIPT_DIR/mongo.sh"
             ;;
         *)
             echo "[错误] 不支持的数据库: $db"

@@ -1,6 +1,7 @@
 #!/bin/bash
-# nacos.sh — Nacos 2.4.3 + openGauss 一键启动（自包含）
-# 资源位于 assets/nacos/（配置 + 方言插件 jar）
+# nacos.sh — Nacos 2.4.3 + openGauss 部署（自包含）
+# 规则（2026-08-29）：同名容器已存在（无论运行/停止）→ 换名换端口新部署，绝不复用/删除已有容器；不挂载主机目录。
+# 配置注入：docker create → docker cp（plugins jar + application.properties）→ docker start
 # 前置条件:
 #   1. opengauss 容器在跑, 0.0.0.0:5432 端口已开
 #   2. omm 密码已设为 Password@1234 (否则 nacos_config 库初始化失败)
@@ -8,19 +9,19 @@
 
 set -euo pipefail
 
-CONTAINER_NAME="nacos"
-OLD_CONTAINER_NAME="nacos-derby-test"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib-deploy.sh"
+
+CONTAINER_NAME=$(next_name nacos)
 NACOS_DIR="$SCRIPT_DIR/../assets/nacos"
-LOG_DIR="${LOG_DIR:-$HOME/nacos-logs}"
 PLUGINS_DIR="$NACOS_DIR/plugins"
 APP_PROPS="$NACOS_DIR/custom-application.properties"
 NACOS_IMAGE="nacos/nacos-server:v2.4.3"
 
 NACOS_OPENGauss_HOST="${NACOS_OPENGauss_HOST:-host.docker.internal}"
 NACOS_OPENGauss_PORT="${NACOS_OPENGauss_PORT:-5432}"
-NACOS_SERVER_PORT="${NACOS_SERVER_PORT:-8848}"
-NACOS_GRPC_PORT="${NACOS_GRPC_PORT:-9848}"
+NACOS_SERVER_PORT=$(free_port "${NACOS_SERVER_PORT:-8848}")
+NACOS_GRPC_PORT=$(free_port "${NACOS_GRPC_PORT:-9848}")
 
 # 前置检查
 if ! command -v docker &>/dev/null; then
@@ -43,28 +44,13 @@ if ! docker ps --format '{{.Names}}' | grep -q "^opengauss$"; then
     exit 1
 fi
 
-# 停掉旧 Nacos 释放 8848
-if docker ps -a --format '{{.Names}}' | grep -q "^${OLD_CONTAINER_NAME}$"; then
-    echo "🛑 停掉老 Nacos: $OLD_CONTAINER_NAME (Derby 模式, 准备切到 openGauss)"
-    docker rm -f "$OLD_CONTAINER_NAME" >/dev/null
+echo "部署 Nacos → 容器 $CONTAINER_NAME（HTTP $NACOS_SERVER_PORT / gRPC $NACOS_GRPC_PORT）"
+if [ "$NACOS_SERVER_PORT" != "8848" ]; then
+    echo "  （8848 已占用，自动换用 $NACOS_SERVER_PORT）"
 fi
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    echo "🛑 停掉已存在的新 Nacos: $CONTAINER_NAME"
-    docker rm -f "$CONTAINER_NAME" >/dev/null
-fi
-
-mkdir -p "$LOG_DIR"
-
-echo "🚀 启动 $CONTAINER_NAME ($NACOS_IMAGE)"
-echo "   日志目录:    $LOG_DIR"
-echo "   openGauss:   $NACOS_OPENGauss_HOST:$NACOS_OPENGauss_PORT/nacos_config"
-
-docker run -d --name "$CONTAINER_NAME" \
-    -v /etc/localtime:/etc/localtime \
-    -v "$LOG_DIR":/home/nacos/logs \
-    -v "$PLUGINS_DIR":/home/nacos/plugins:ro \
-    -v "$APP_PROPS":/home/nacos/conf/application.properties:ro \
+# create → cp（插件 + 配置）→ start，全程无主机目录挂载
+CID=$(docker create --name "$CONTAINER_NAME" \
     -e MODE=standalone \
     -e PREFER_HOST_MODE=ip \
     -e TIME_ZONE=Asia/Shanghai \
@@ -75,7 +61,11 @@ docker run -d --name "$CONTAINER_NAME" \
     -p "${NACOS_SERVER_PORT}:8848" \
     -p "${NACOS_GRPC_PORT}:9848" \
     --add-host=host.docker.internal:host-gateway \
-    "$NACOS_IMAGE"
+    "$NACOS_IMAGE")
+
+docker cp "$PLUGINS_DIR"/. "$CID":/home/nacos/plugins/
+docker cp "$APP_PROPS" "$CID":/home/nacos/conf/application.properties
+docker start "$CID" >/dev/null
 
 echo "⏳ 等待 Nacos 启动..."
 NACOS_URL="http://127.0.0.1:${NACOS_SERVER_PORT}"
@@ -118,7 +108,7 @@ WSL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 
 echo ""
 echo "=========================================="
-echo "  ✅ Nacos 2.4.3 + openGauss 启动完成"
+echo "  ✅ Nacos 2.4.3 + openGauss 部署完成"
 echo "=========================================="
 echo ""
 echo "访问方式:"
@@ -130,7 +120,6 @@ echo ""
 echo "后端 (openGauss):"
 echo "  容器:       $NACOS_OPENGauss_HOST:$NACOS_OPENGauss_PORT/nacos_config"
 echo "  库/表数:   1 库 / 12 表"
-echo "  日志:       $LOG_DIR"
 echo ""
 echo "API 探活:"
 echo "  健康检查:   curl -sS http://127.0.0.1:${NACOS_SERVER_PORT}/nacos/actuator/health"

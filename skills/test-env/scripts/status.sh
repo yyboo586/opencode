@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DB_COMPOSE="$SCRIPT_DIR/../assets/database/docker-compose.yml"
 
-echo "=== 数据库 ==="
+echo "=== 数据库（compose: mysql/opengauss/tidb/mongo）==="
 docker compose -f "$DB_COMPOSE" ps 2>/dev/null || echo "  无运行中的数据库"
 
 echo ""
@@ -17,6 +17,10 @@ docker ps --filter "name=redis" --format "{{.Names}}  {{.Status}}  {{.Ports}}" 2
 echo ""
 echo "=== Nacos ==="
 docker ps --filter "name=nacos" --format "{{.Names}}  {{.Status}}  {{.Ports}}" 2>/dev/null || echo "  无运行中的 Nacos"
+
+echo ""
+echo "=== Mongo ==="
+docker ps --filter "name=^mongo$" --format "{{.Names}}  {{.Status}}  {{.Ports}}" 2>/dev/null || echo "  无运行中的 Mongo"
 
 echo ""
 echo "=== EMQX ==="
