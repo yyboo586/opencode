@@ -1,28 +1,25 @@
 # 记忆协同机制（跨会话持久记忆）
 
-> 本机制解决：会话记忆存在哪、怎么读写、什么能进什么不能进。四层分工与流转全局统一，各仓库零重复描述。
+> 本机制解决：会话记忆存在哪、怎么读写、什么能进什么不能进。三层分工与流转全局统一，各仓库零重复描述。
 > 本文件由全局 `AGENTS.md` 独立而来，经 `opencode.jsonc` `instructions` 每次会话注入。
 
-## 四层记忆
+## 三层记忆
 
 | 层 | 位置 | 内容 | frontmatter type | 变化性 |
 |----|------|------|------------------|--------|
-| 索引 | `<cwd>/.opencode/MEMORY.md` | 中央索引 — Memory / Tracking 两节（内部结构见「每层怎么读写」；画像层在全局，见 AGENTS.md 第 4 节） | `reference` | 经常变 |
+| 索引 | `<cwd>/.opencode/MEMORY.md` | 中央索引 — Memory / Tracking 两节（内部结构见「每层怎么读写」） | `reference` | 经常变 |
 | 记忆 | `<cwd>/.opencode/memory/` | 项目事实、模块业务逻辑、深度文档 | `reference` | 基本不变 |
 | 任务 | `<cwd>/.opencode/tracking/` | 执行中/未完成任务专题 + 已完成的保留文档 + Q-A 经历记录 | `debug` / `design` / `analysis` | 经常变 |
-| 画像 | `~/.config/opencode/me/` | 跨仓库用户画像（profile.md + advice.md） | `user` / `feedback` | 人不变即不变 |
 
 **内容归属判断**：
 
 - 内容是"项目是什么 / 怎么工作" → `memory/`
 - 内容是"正在做什么 / 做到哪了" → `tracking/`
-- 内容是"我是谁 / 怎么协作" → `me/`
 
 **边界铁律**：
 
 - **项目相关记忆只存项目内 `.opencode/`**（MEMORY.md / memory/ / tracking/），**永不进入全局仓库**
-- **全局仓库只承载**：机制规则（AGENTS.md + README.md）、全局技能（skills/）、全局命令（commands/）、开发者画像（me/）
-- **画像（me/）只存全局** `~/.config/opencode/me/`，永不进入任何项目 `.opencode/`
+- **全局仓库只承载**：机制规则（AGENTS.md + README.md）、全局技能（skills/）、全局命令（commands/）
 - 记忆机制由本节省统一定义，各仓库 AGENTS.md 不需要重复书写
 
 ## 每层怎么读写
@@ -48,7 +45,7 @@
 
 **读取时机（显式分层）**：
 
-- **每次会话必读**：`<cwd>/.opencode/MEMORY.md` 索引（AGENTS.md 第 2 节第 4 步）— 小、经常变、起定位作用；`~/.config/opencode/me/profile.md` 画像（每次响应前，见 AGENTS.md 第 4 节）
+- **每次会话必读**：`<cwd>/.opencode/MEMORY.md` 索引（AGENTS.md §1.2 第 4 步）— 小、经常变、起定位作用
 - **条件读取**：MEMORY.md「Tracking — 进行中」有未完成任务 → 读对应 tracking 专题续接（**仅相关专题**，不读全部）；memory/ 深度文档 → 按索引定位 + 任务相关性按需展开
 - **不携带**：tracking/ 的 Q-A 归档与 memory/ 全文**不整体携带**进上下文（体量大、且大部分与当前任务无关）；需要时按索引定位检索。"按需展开"≠"全部读取"：未命中任务相关性时，只读索引即可
 
@@ -107,4 +104,3 @@ tracking/ 下文档分两类：
 > 本机制解决：会话内容怎么变成知识文档。
 
 - `/q-a 整理`：蒸馏（提炼精华）会话 → 项目 `.opencode/tracking/`（design/analysis/debug）
-- `/update-profile`：从会话消息流提取画像证据 → 演进 `me/profile.md`（q-a 是显微镜——看单次会话细节；update-profile 是望远镜——看跨会话全局）

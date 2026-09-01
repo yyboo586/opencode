@@ -12,7 +12,6 @@
 | `README.md` | 事实说明（本文件，目录结构唯一真相源） | git |
 | `skills/` | 用户级技能（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
 | `commands/` | 用户级命令（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
-| `me/` | 开发者画像（profile.md + advice.md + insights/ + legacy-deployment/） | **gitignore，不入 git** |
 | `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（`instructions` 字段引用 memory-mechanism.md） | 本地 |
 
 > 2026-08-05 起 skills/commands 为实体目录（由原软链接改为实体），所有项目共用一份，无项目级副本。
@@ -48,7 +47,6 @@
 
 排除项：
 
-- **用户画像及证据**（profile/advice/insight）一律存全局 `~/.config/opencode/me/`，不进入任何项目
 - `node_modules/` + `package.json` 为 opencode 运行时产物（`@opencode-ai/plugin`），保留
 
 ### 记忆协同机制（事实）
@@ -60,16 +58,8 @@
 | 索引 `MEMORY.md` | 项目 `.opencode/` | 项目 |
 | 记忆 `memory/` | 项目 `.opencode/` | 项目 |
 | 任务 `tracking/` | 项目 `.opencode/` | 项目 |
-| 画像 `me/` | 全局 `~/.config/opencode/` | 全局 |
 
-- 项目记忆**永不进入全局仓库**；画像**永不进入项目**
+- 项目记忆**永不进入全局仓库**
 
-- **Git 透明（默认）**：四类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`me/`、`tracking/`、`memory/`
+- **Git 透明（默认）**：三类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`tracking/`、`memory/`
 - **特例：Practice 仓库记忆层（MEMORY.md / memory/ / tracking/）随 Git 归档**（2026-08-18 起），其余仓库维持透明
-- 沉淀管线：`/q-a 整理`（tracking 归档 + 全局 `me/insights/` 画像证据）→ `/update-profile`（画像演进）
-
-## 开发者画像
-
-- 位置：`~/.config/opencode/me/`
-- `profile.md`：开发者画像主文；`advice.md`：行为建议；`insights/`：q-a skill 产出的画像证据（update-profile 输入）；`legacy-deployment/`：历史旧版画像（参考保留）
-- 画像内容跨仓库适用，由 `update-profile` skill 定期更新，**不入 git**
