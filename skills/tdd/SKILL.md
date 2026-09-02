@@ -1,719 +1,141 @@
 ---
 name: tdd
-description: Go testing patterns including table-driven tests, subtests, benchmarks, fuzzing, and test coverage. Follows TDD methodology with idiomatic Go practices.
+description: 编写/修改/审核任何测试代码前必须加载。
 ---
 
-# Go Testing Patterns
+# 测试用例编写与TDD工作流
 
-Comprehensive Go testing patterns for writing reliable, maintainable tests following TDD methodology.
+> 流程：RED 写失败测试 → GREEN 最小实现 → REFACTOR 重构 → 代码审核，循环至功能完成。
+> 编写风格：优先采用表格驱动测试——用例以表格行组织（场景名 + 输入 + 期望），断言逻辑集中在单处，用 `t.Run` 子测试展开。
 
-## When to Activate
+## 触发方式
 
-- Writing new Go functions or methods
-- Adding test coverage to existing code
-- Creating benchmarks for performance-critical code
-- Implementing fuzz tests for input validation
-- Following TDD workflow in Go projects
+**手动触发**：`/tdd`
 
-## TDD Workflow for Go
+**自动触发**：
+- 编写/修改测试
+- 分析/审核测试
 
-### The RED-GREEN-REFACTOR Cycle
+---
 
-```
-RED     → Write a failing test first
-GREEN   → Write minimal code to pass the test
-REFACTOR → Improve code while keeping tests green
-REPEAT  → Continue with next requirement
-```
+## 编写/审核测试用例规则
 
-### Step-by-Step TDD in Go
+本节定义测试的真伪判定标准和正反示例。**编写、修改、审核**任何测试代码前必须逐项自检，确保测试真实验证被测对象的业务行为。
+
+**假测试定义：未能有效验证被测对象核心业务行为的测试。**
+
+### 1. 名称与验证内容必须一致
+
+「名称」指两级：
+
+- **测试函数名**：`Test<被测功能>_<验证场景>`，功能 = 被测函数/方法，场景 = 该测试验证的行为或条件，如 `TestAdd_PositiveNumbers`
+- **子测试名**：`t.Run` 的第一个参数，描述该子用例验证的具体行为，如 `t.Run("负数相加返回负数", ...)`
+
+两级名称都必须准确描述被验证的功能行为。名称说的是A，断言验证的是B，即为假测试。
 
 ```go
-// Step 1: Define the interface/signature
-// calculator.go
-package calculator
-
-func Add(a, b int) int {
-    panic("not implemented") // Placeholder
+// ✅ 一致：函数名说"负数相加"，断言验证的正是结果为负
+func TestAdd_NegativeNumbers(t *testing.T) {
+    got := Add(-1, -2)
+    if got != -3 {
+        t.Errorf("Add(-1, -2) = %d; want -3", got)
+    }
 }
 
-// Step 2: Write failing test (RED)
-// calculator_test.go
-package calculator
-
-import "testing"
-
-func TestAdd(t *testing.T) {
+// ❌ 不一致：名称说"负数"，断言验证的却是正数场景 → 假测试
+func TestAdd_NegativeNumbers(t *testing.T) {
     got := Add(2, 3)
-    want := 5
-    if got != want {
-        t.Errorf("Add(2, 3) = %d; want %d", got, want)
+    if got != 5 {
+        t.Errorf("Add(2, 3) = %d; want 5", got)
     }
 }
-
-// Step 3: Run test - verify FAIL
-// $ go test
-// --- FAIL: TestAdd (0.00s)
-// panic: not implemented
-
-// Step 4: Implement minimal code (GREEN)
-func Add(a, b int) int {
-    return a + b
-}
-
-// Step 5: Run test - verify PASS
-// $ go test
-// PASS
-
-// Step 6: Refactor if needed, verify tests still pass
 ```
 
-## Table-Driven Tests
+### 2. 必须包含对实际行为效果的断言（而非仅检查"无错误"）
 
-The standard pattern for Go tests. Enables comprehensive coverage with minimal code.
+「实际行为效果」指以下三种形态之一或组合，断言必须落到其中至少一种的**具体值**上：
+
+- **输出**：函数/方法的返回值，断言其内容（值、错误、结构体字段）
+- **状态变化**：被测对象内部或外部可见状态的改变，断言变化后的状态（如结构体字段、缓存内容、状态机阶段）
+- **副作用**：对外的可观测影响，断言其结果（如写入 DB 的行、发出的消息、创建的文件）
+
+不算数清单（伪断言——测试能跑、能过，但对行为零保证）：
+
+- 仅构造实例 + 调用方法（"跑过了没报错"），返回值/状态完全未验证
+- 仅打印日志（`t.Log` / `fmt.Println`）——人眼看了，测试永不失败
+- 仅检查 `err == nil` / `assert.NoError`——除非被测对象的核心行为就是"不应报错"
+- 测试代码发射事件再自行验证——手动 `log.Info(...)` 后去日志里找这条记录，验证的是测试代码自身；判别法：把被测代码删掉，测试还会过 = 验证对象错了
+
+没有断言的测试不是测试。
+
+断言覆盖面：返回值有多个业务字段时，与本次操作直接相关的字段必须**全部断言**，不可只挑一个（对齐 chain-db-validation 规范的"全部写入列不抽样"）。
 
 ```go
-func TestAdd(t *testing.T) {
-    tests := []struct {
-        name     string
-        a, b     int
-        expected int
-    }{
-        {"positive numbers", 2, 3, 5},
-        {"negative numbers", -1, -2, -3},
-        {"zero values", 0, 0, 0},
-        {"mixed signs", -1, 1, 0},
-        {"large numbers", 1000000, 2000000, 3000000},
+// ✅ 断言输出内容：验证返回的具体值
+func TestAdd_PositiveNumbers(t *testing.T) {
+    got := Add(2, 3)
+    if got != 5 {
+        t.Errorf("Add(2, 3) = %d; want 5", got)
     }
+}
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            got := Add(tt.a, tt.b)
-            if got != tt.expected {
-                t.Errorf("Add(%d, %d) = %d; want %d",
-                    tt.a, tt.b, got, tt.expected)
-            }
-        })
-    }
+// ❌ 无行为效果断言：只确认"没报错"，返回值未验证 → 假测试
+func TestAdd_PositiveNumbers(t *testing.T) {
+    assert.NoError(t, err) // 只有这一句，结果内容未验证
+}
+
+// ❌ 字段抽样：返回 3 个业务字段只断言 1 个 → 覆盖面不足
+func TestCreateUser(t *testing.T) {
+    user, err := CreateUser("alice")
+    assert.NoError(t, err)
+    assert.Equal(t, "alice", user.Name) // ID、CreatedAt 未验证
+}
+
+// ❌ 只调用不验证：只 Push 不检查，元素全丢也照样绿 → 假测试
+func TestQueue_Push(t *testing.T) {
+    q := NewQueue()
+    q.Push(1)
+    q.Push(2)
+    // 未验证 Len() == 2、Pop() 顺序——测试对 Push 行为零保证
+}
+
+// ❌ 自发射自验证：事件是测试自己发的，与被测代码无关 → 假测试
+func TestCreateUser_Log(t *testing.T) {
+    log.Info("订单已创建", zap.String("id", "1")) // 测试手动发射
+    // 被测代码就算不写日志，这里也能找到这条记录
 }
 ```
 
-### Table-Driven Tests with Error Cases
+### 3. 最低覆盖集：Happy Path + Error Path + 边界条件 + 完整路径
 
-```go
-func TestParseConfig(t *testing.T) {
-    tests := []struct {
-        name    string
-        input   string
-        want    *Config
-        wantErr bool
-    }{
-        {
-            name:  "valid config",
-            input: `{"host": "localhost", "port": 8080}`,
-            want:  &Config{Host: "localhost", Port: 8080},
-        },
-        {
-            name:    "invalid JSON",
-            input:   `{invalid}`,
-            wantErr: true,
-        },
-        {
-            name:    "empty input",
-            input:   "",
-            wantErr: true,
-        },
-        {
-            name:  "minimal config",
-            input: `{}`,
-            want:  &Config{}, // Zero value config
-        },
-    }
+每个功能的测试至少覆盖四类场景：
 
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            got, err := ParseConfig(tt.input)
+- **Happy Path**：合法输入，验证正常行为效果（断言要求见第 2 条）
+- **Error Path**：被测代码包含显式错误分支（`return err`、校验失败、超时）时，至少一个测试触发该分支并验证错误行为（错误码、错误消息、状态不推进）
+- **边界条件**：nil / 空 / 0 / 负数 / 超大输入
+- **完整路径**：功能有多个阶段（如"接收→处理→返回"）时，不能只验证"接收"阶段，每个核心阶段的结果都要有断言
 
-            if tt.wantErr {
-                if err == nil {
-                    t.Error("expected error, got nil")
-                }
-                return
-            }
+Error Path 必须用真实手段触发（连接失败用错误地址/停依赖、超时取消用 context 控制、数据错误用非法输入/冲突预置数据）。
 
-            if err != nil {
-                t.Fatalf("unexpected error: %v", err)
-            }
+确实无法真实触发的故障（磁盘满、网络分区等）允许不写测试，但必须在测试文件中显式列出「未覆盖场景 + 原因」。禁止静默不测，禁止用 skip 伪装（第 5 条）——"不好测"不是省略理由，是记录义务。
 
-            if !reflect.DeepEqual(got, tt.want) {
-                t.Errorf("got %+v; want %+v", got, tt.want)
-            }
-        })
-    }
-}
-```
+### 4. 测试必须具备反证能力
 
-## Subtests and Sub-benchmarks
+如果翻转被测代码的核心逻辑（如 `==` 改 `!=`、`true` 改 `false`、删除关键写入步骤），至少一条断言必须失败。测试不能在代码有 bug 时仍然通过。
 
-### Organizing Related Tests
+### 5. 测试不允许 skip
 
-```go
-func TestUser(t *testing.T) {
-    // Setup shared by all subtests
-    db := setupTestDB(t)
+`t.Skip` / 条件跳过不是"暂时放过的已知项"，而是伪装通过的假测试：一个从未运行过的测试，对其覆盖的行为提供的保证等于零。环境缺失导致的 skip 视同测试失败，必须修复环境重跑。
 
-    t.Run("Create", func(t *testing.T) {
-        user := &User{Name: "Alice"}
-        err := db.CreateUser(user)
-        if err != nil {
-            t.Fatalf("CreateUser failed: %v", err)
-        }
-        if user.ID == "" {
-            t.Error("expected user ID to be set")
-        }
-    })
+环境缺失（如数据库连不上）导致测试**失败是合规信号**——失败有效，skip 无效。禁止把 setup 失败降级为 Skip。
 
-    t.Run("Get", func(t *testing.T) {
-        user, err := db.GetUser("alice-id")
-        if err != nil {
-            t.Fatalf("GetUser failed: %v", err)
-        }
-        if user.Name != "Alice" {
-            t.Errorf("got name %q; want %q", user.Name, "Alice")
-        }
-    })
+---
 
-    t.Run("Update", func(t *testing.T) {
-        // ...
-    })
+## 测试数据准备与清理
 
-    t.Run("Delete", func(t *testing.T) {
-        // ...
-    })
-}
-```
+一般情况下，测试用例应**自备数据、主动清理**：用例自行准备所需测试数据，测试结束后主动清理——不依赖外部预置数据，不给其他用例留残留。
 
-### Parallel Subtests
-
-```go
-func TestParallel(t *testing.T) {
-    tests := []struct {
-        name  string
-        input string
-    }{
-        {"case1", "input1"},
-        {"case2", "input2"},
-        {"case3", "input3"},
-    }
-
-    for _, tt := range tests {
-        tt := tt // Capture range variable
-        t.Run(tt.name, func(t *testing.T) {
-            t.Parallel() // Run subtests in parallel
-            result := Process(tt.input)
-            // assertions...
-            _ = result
-        })
-    }
-}
-```
-
-## Test Helpers
-
-### Helper Functions
-
-```go
-func setupTestDB(t *testing.T) *sql.DB {
-    t.Helper() // Marks this as a helper function
-
-    db, err := sql.Open("sqlite3", ":memory:")
-    if err != nil {
-        t.Fatalf("failed to open database: %v", err)
-    }
-
-    // Cleanup when test finishes
-    t.Cleanup(func() {
-        db.Close()
-    })
-
-    // Run migrations
-    if _, err := db.Exec(schema); err != nil {
-        t.Fatalf("failed to create schema: %v", err)
-    }
-
-    return db
-}
-
-func assertNoError(t *testing.T, err error) {
-    t.Helper()
-    if err != nil {
-        t.Fatalf("unexpected error: %v", err)
-    }
-}
-
-func assertEqual[T comparable](t *testing.T, got, want T) {
-    t.Helper()
-    if got != want {
-        t.Errorf("got %v; want %v", got, want)
-    }
-}
-```
-
-### Temporary Files and Directories
-
-```go
-func TestFileProcessing(t *testing.T) {
-    // Create temp directory - automatically cleaned up
-    tmpDir := t.TempDir()
-
-    // Create test file
-    testFile := filepath.Join(tmpDir, "test.txt")
-    err := os.WriteFile(testFile, []byte("test content"), 0644)
-    if err != nil {
-        t.Fatalf("failed to create test file: %v", err)
-    }
-
-    // Run test
-    result, err := ProcessFile(testFile)
-    if err != nil {
-        t.Fatalf("ProcessFile failed: %v", err)
-    }
-
-    // Assert...
-    _ = result
-}
-```
-
-## Golden Files
-
-Testing against expected output files stored in `testdata/`.
-
-```go
-var update = flag.Bool("update", false, "update golden files")
-
-func TestRender(t *testing.T) {
-    tests := []struct {
-        name  string
-        input Template
-    }{
-        {"simple", Template{Name: "test"}},
-        {"complex", Template{Name: "test", Items: []string{"a", "b"}}},
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            got := Render(tt.input)
-
-            golden := filepath.Join("testdata", tt.name+".golden")
-
-            if *update {
-                // Update golden file: go test -update
-                err := os.WriteFile(golden, got, 0644)
-                if err != nil {
-                    t.Fatalf("failed to update golden file: %v", err)
-                }
-            }
-
-            want, err := os.ReadFile(golden)
-            if err != nil {
-                t.Fatalf("failed to read golden file: %v", err)
-            }
-
-            if !bytes.Equal(got, want) {
-                t.Errorf("output mismatch:\ngot:\n%s\nwant:\n%s", got, want)
-            }
-        })
-    }
-}
-```
-
-## Mocking with Interfaces
-
-### Interface-Based Mocking
-
-```go
-// Define interface for dependencies
-type UserRepository interface {
-    GetUser(id string) (*User, error)
-    SaveUser(user *User) error
-}
-
-// Production implementation
-type PostgresUserRepository struct {
-    db *sql.DB
-}
-
-func (r *PostgresUserRepository) GetUser(id string) (*User, error) {
-    // Real database query
-}
-
-// Mock implementation for tests
-type MockUserRepository struct {
-    GetUserFunc  func(id string) (*User, error)
-    SaveUserFunc func(user *User) error
-}
-
-func (m *MockUserRepository) GetUser(id string) (*User, error) {
-    return m.GetUserFunc(id)
-}
-
-func (m *MockUserRepository) SaveUser(user *User) error {
-    return m.SaveUserFunc(user)
-}
-
-// Test using mock
-func TestUserService(t *testing.T) {
-    mock := &MockUserRepository{
-        GetUserFunc: func(id string) (*User, error) {
-            if id == "123" {
-                return &User{ID: "123", Name: "Alice"}, nil
-            }
-            return nil, ErrNotFound
-        },
-    }
-
-    service := NewUserService(mock)
-
-    user, err := service.GetUserProfile("123")
-    if err != nil {
-        t.Fatalf("unexpected error: %v", err)
-    }
-    if user.Name != "Alice" {
-        t.Errorf("got name %q; want %q", user.Name, "Alice")
-    }
-}
-```
-
-## Benchmarks
-
-### Basic Benchmarks
-
-```go
-func BenchmarkProcess(b *testing.B) {
-    data := generateTestData(1000)
-    b.ResetTimer() // Don't count setup time
-
-    for i := 0; i < b.N; i++ {
-        Process(data)
-    }
-}
-
-// Run: go test -bench=BenchmarkProcess -benchmem
-// Output: BenchmarkProcess-8   10000   105234 ns/op   4096 B/op   10 allocs/op
-```
-
-### Benchmark with Different Sizes
-
-```go
-func BenchmarkSort(b *testing.B) {
-    sizes := []int{100, 1000, 10000, 100000}
-
-    for _, size := range sizes {
-        b.Run(fmt.Sprintf("size=%d", size), func(b *testing.B) {
-            data := generateRandomSlice(size)
-            b.ResetTimer()
-
-            for i := 0; i < b.N; i++ {
-                // Make a copy to avoid sorting already sorted data
-                tmp := make([]int, len(data))
-                copy(tmp, data)
-                sort.Ints(tmp)
-            }
-        })
-    }
-}
-```
-
-### Memory Allocation Benchmarks
-
-```go
-func BenchmarkStringConcat(b *testing.B) {
-    parts := []string{"hello", "world", "foo", "bar", "baz"}
-
-    b.Run("plus", func(b *testing.B) {
-        for i := 0; i < b.N; i++ {
-            var s string
-            for _, p := range parts {
-                s += p
-            }
-            _ = s
-        }
-    })
-
-    b.Run("builder", func(b *testing.B) {
-        for i := 0; i < b.N; i++ {
-            var sb strings.Builder
-            for _, p := range parts {
-                sb.WriteString(p)
-            }
-            _ = sb.String()
-        }
-    })
-
-    b.Run("join", func(b *testing.B) {
-        for i := 0; i < b.N; i++ {
-            _ = strings.Join(parts, "")
-        }
-    })
-}
-```
-
-## Fuzzing (Go 1.18+)
-
-### Basic Fuzz Test
-
-```go
-func FuzzParseJSON(f *testing.F) {
-    // Add seed corpus
-    f.Add(`{"name": "test"}`)
-    f.Add(`{"count": 123}`)
-    f.Add(`[]`)
-    f.Add(`""`)
-
-    f.Fuzz(func(t *testing.T, input string) {
-        var result map[string]interface{}
-        err := json.Unmarshal([]byte(input), &result)
-
-        if err != nil {
-            // Invalid JSON is expected for random input
-            return
-        }
-
-        // If parsing succeeded, re-encoding should work
-        _, err = json.Marshal(result)
-        if err != nil {
-            t.Errorf("Marshal failed after successful Unmarshal: %v", err)
-        }
-    })
-}
-
-// Run: go test -fuzz=FuzzParseJSON -fuzztime=30s
-```
-
-### Fuzz Test with Multiple Inputs
-
-```go
-func FuzzCompare(f *testing.F) {
-    f.Add("hello", "world")
-    f.Add("", "")
-    f.Add("abc", "abc")
-
-    f.Fuzz(func(t *testing.T, a, b string) {
-        result := Compare(a, b)
-
-        // Property: Compare(a, a) should always equal 0
-        if a == b && result != 0 {
-            t.Errorf("Compare(%q, %q) = %d; want 0", a, b, result)
-        }
-
-        // Property: Compare(a, b) and Compare(b, a) should have opposite signs
-        reverse := Compare(b, a)
-        if (result > 0 && reverse >= 0) || (result < 0 && reverse <= 0) {
-            if result != 0 || reverse != 0 {
-                t.Errorf("Compare(%q, %q) = %d, Compare(%q, %q) = %d; inconsistent",
-                    a, b, result, b, a, reverse)
-            }
-        }
-    })
-}
-```
-
-## Test Coverage
-
-### Running Coverage
-
-```bash
-# Basic coverage
-go test -cover ./...
-
-# Generate coverage profile
-go test -coverprofile=coverage.out ./...
-
-# View coverage in browser
-go tool cover -html=coverage.out
-
-# View coverage by function
-go tool cover -func=coverage.out
-
-# Coverage with race detection
-go test -race -coverprofile=coverage.out ./...
-```
-
-### Coverage Targets
-
-| Code Type | Target |
-|-----------|--------|
-| Critical business logic | 100% |
-| Public APIs | 90%+ |
-| General code | 80%+ |
-| Generated code | Exclude |
-
-### Excluding Generated Code from Coverage
-
-```go
-//go:generate mockgen -source=interface.go -destination=mock_interface.go
-
-// In coverage profile, exclude with build tags:
-// go test -cover -tags=!generate ./...
-```
-
-## HTTP Handler Testing
-
-```go
-func TestHealthHandler(t *testing.T) {
-    // Create request
-    req := httptest.NewRequest(http.MethodGet, "/health", nil)
-    w := httptest.NewRecorder()
-
-    // Call handler
-    HealthHandler(w, req)
-
-    // Check response
-    resp := w.Result()
-    defer resp.Body.Close()
-
-    if resp.StatusCode != http.StatusOK {
-        t.Errorf("got status %d; want %d", resp.StatusCode, http.StatusOK)
-    }
-
-    body, _ := io.ReadAll(resp.Body)
-    if string(body) != "OK" {
-        t.Errorf("got body %q; want %q", body, "OK")
-    }
-}
-
-func TestAPIHandler(t *testing.T) {
-    tests := []struct {
-        name       string
-        method     string
-        path       string
-        body       string
-        wantStatus int
-        wantBody   string
-    }{
-        {
-            name:       "get user",
-            method:     http.MethodGet,
-            path:       "/users/123",
-            wantStatus: http.StatusOK,
-            wantBody:   `{"id":"123","name":"Alice"}`,
-        },
-        {
-            name:       "not found",
-            method:     http.MethodGet,
-            path:       "/users/999",
-            wantStatus: http.StatusNotFound,
-        },
-        {
-            name:       "create user",
-            method:     http.MethodPost,
-            path:       "/users",
-            body:       `{"name":"Bob"}`,
-            wantStatus: http.StatusCreated,
-        },
-    }
-
-    handler := NewAPIHandler()
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            var body io.Reader
-            if tt.body != "" {
-                body = strings.NewReader(tt.body)
-            }
-
-            req := httptest.NewRequest(tt.method, tt.path, body)
-            req.Header.Set("Content-Type", "application/json")
-            w := httptest.NewRecorder()
-
-            handler.ServeHTTP(w, req)
-
-            if w.Code != tt.wantStatus {
-                t.Errorf("got status %d; want %d", w.Code, tt.wantStatus)
-            }
-
-            if tt.wantBody != "" && w.Body.String() != tt.wantBody {
-                t.Errorf("got body %q; want %q", w.Body.String(), tt.wantBody)
-            }
-        })
-    }
-}
-```
-
-## Testing Commands
-
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with verbose output
-go test -v ./...
-
-# Run specific test
-go test -run TestAdd ./...
-
-# Run tests matching pattern
-go test -run "TestUser/Create" ./...
-
-# Run tests with race detector
-go test -race ./...
-
-# Run tests with coverage
-go test -cover -coverprofile=coverage.out ./...
-
-# Run short tests only
-go test -short ./...
-
-# Run tests with timeout
-go test -timeout 30s ./...
-
-# Run benchmarks
-go test -bench=. -benchmem ./...
-
-# Run fuzzing
-go test -fuzz=FuzzParse -fuzztime=30s ./...
-
-# Count test runs (for flaky test detection)
-go test -count=10 ./...
-```
-
-## Best Practices
-
-**DO:**
-- Write tests FIRST (TDD)
-- Use table-driven tests for comprehensive coverage
-- Test behavior, not implementation
-- Use `t.Helper()` in helper functions
-- Use `t.Parallel()` for independent tests
-- Clean up resources with `t.Cleanup()`
-- Use meaningful test names that describe the scenario
-
-**DON'T:**
-- Test private functions directly (test through public API)
-- Use `time.Sleep()` in tests (use channels or conditions)
-- Ignore flaky tests (fix or remove them)
-- Mock everything (prefer integration tests when possible)
-- Skip error path testing
-
-## Integration with CI/CD
-
-```yaml
-# GitHub Actions example
-test:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-
-    - name: Run tests
-      run: go test -race -coverprofile=coverage.out ./...
-
-    - name: Check coverage
-      run: |
-        go tool cover -func=coverage.out | grep total | awk '{print $3}' | \
-        awk -F'%' '{if ($1 < 80) exit 1}'
-```
-
-**Remember**: Tests are documentation. They show how your code is meant to be used. Write them clearly and keep them up to date.
+| 规则 | 做法 |
+|------|------|
+| 清理键按特征不按前缀 | 按测试特征键 + `t.Cleanup` 防御，不按脆弱 id 前缀 |
+| 测试库残留用 DROP 不用 TRUNCATE | TRUNCATE 无法重置 SERIAL 数据类型；DROP 重建后序列归零 |

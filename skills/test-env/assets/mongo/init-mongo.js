@@ -20,3 +20,13 @@ db.createUser({
         { role: "dbAdmin", db: "rbiot" }
     ]
 });
+
+// logUser — 日志 hook 专用（rbIotDataserver log.InitLog() 用 LogUsername/LogUserPwd 连 Mongo，
+// 凭据来自 Nacos dataId=mongo 播种内容：logUser/passWord1122#4566）
+db.createUser({
+    user: "logUser",
+    pwd: "passWord1122#4566",
+    roles: [
+        { role: "readWrite", db: "rbiot" }
+    ]
+});

@@ -2,9 +2,12 @@
 # nacos-seed.sh — 部署 Nacos 后播种 rbIotDataserver 业务配置（幂等，内容硬编码自包含）
 #
 # 用途：本地测试链路走真实 Nacos（remoteConfigDb 分支），部署 Nacos 时一次性播种：
-#   - dataId=mongo    → Mongo 连接配置（rbIotDataserver 的 DatabaseConfig）
-#   - dataId=forward  → 转发配置（ForwardConfigData）
-# 不播种（拍板 2026-08-31）：aggregate、mqtt_forward（本地测试链路用不到，报缺再补）
+#   - dataId=mongo        → Mongo 连接配置（rbIotDataserver 的 DatabaseConfig）
+#   - dataId=forward      → 转发配置（ForwardConfigData）
+#   - dataId=database     → SQL(openGauss) 连接配置（SqlConfig，repo-sql-migration 阶段二）
+#   - dataId=mqtt_forward → MQTT 转发配置（MqttForwardConfigData；最小配置=合法 cron+空 sites，
+#                           缺失时 cron.AddFunc 报错 panic——本地启动必炸点，故必播）
+# 不播种（拍板 2026-09-02）：aggregate（cron 空时 aggregateserver 静默跳过，本地无设备数据无意义）
 #
 # 幂等策略：先 GET 判断，已存在则跳过（--force 覆盖）
 # API：Nacos OpenAPI v1，鉴权关闭（test-env custom-application.properties）
@@ -56,6 +59,22 @@ FORWARD_CONTENT='forwardurl: "/api/local/run_scene"
 forwardhost: "127.0.0.1"
 forwardhttp: "http://"'
 
+# SQL(openGauss) 连接配置（repo-sql-migration 阶段二；test-env 指向 test_db_pg 影子表库）
+DATABASE_CONTENT='host: 127.0.0.1
+port: 5432
+user: test_user
+password: Test@1234
+databasename: test_db_pg
+maxopenconns: 50
+maxidleconns: 10
+connmaxlife: 1800'
+
+# MQTT 转发最小配置（2026-09-02 拍板）：合法 cron + 空 sites——服务启动必需（缺失即 panic），
+# 本地无 EMQX/无转发目标，空跑无副作用
+MQTT_FORWARD_CONTENT='corpid: ""
+cron: "0 */5 * * *"
+sites: []'
+
 # ---------- 通用播种函数 ----------
 seed_config() {
     local label="$1"
@@ -90,13 +109,15 @@ seed_config() {
     return 1
 }
 
-seed_config "mongo"   "$MONGO_CONTENT"
-seed_config "forward" "$FORWARD_CONTENT"
+seed_config "mongo"         "$MONGO_CONTENT"
+seed_config "forward"       "$FORWARD_CONTENT"
+seed_config "database"      "$DATABASE_CONTENT"
+seed_config "mqtt_forward"  "$MQTT_FORWARD_CONTENT"
 
 # ---------- 回读验证 ----------
 echo
 echo "=== 回读验证 ==="
-for dataId in mongo forward; do
+for dataId in mongo forward database mqtt_forward; do
     content=$(curl -sf "http://${NACOS_HOST}:${NACOS_PORT}/nacos/v1/cs/configs?dataId=${dataId}&group=${GROUP}")
     if [[ -n "$content" ]]; then
         echo "✅ GET dataId=${dataId}: $(echo "$content" | head -1) ..."

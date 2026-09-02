@@ -1,6 +1,6 @@
 // memory-sync — 记忆协同自动触发插件（全局）
 //
-// 机制定位（全局 AGENTS.md §6）：
+// 机制定位（全局 memory-mechanism.md）：
 //   主机制 = 自动持续提醒（每轮 system + 每次认知性工具执行后），
 //   兜底   = 特定动作后检查（git commit 后）。
 //
@@ -13,7 +13,7 @@ import { join } from "node:path";
 // 每轮注入的常驻规则（experimental.chat.system.transform，每次 LLM 调用前触发）
 const SYSTEM_RULE = `[记忆协同] 本项目使用 .opencode/ 跨会话记忆（MEMORY.md 索引 + memory/ + tracking/）。
 规则：每次 edit/write/bash 工具执行后，若形成新认知或任务有进展（根因/决策/踩坑/状态变化），
-立即更新对应 tracking/ 或 memory/ 文档并同步 MEMORY.md 索引（详见全局 AGENTS.md §6），
+立即更新对应 tracking/ 或 memory/ 文档并同步 MEMORY.md 索引（详见全局 memory-mechanism.md），
 不等会话结束、不依赖特定动作。无新认知则不动作。`;
 
 // 认知性工具：执行后强制检查记忆同步（read/grep 等只读工具不触发，避免噪声）
@@ -22,7 +22,7 @@ const COGNITIVE_TOOLS = new Set(["edit", "write", "apply_patch", "patch", "multi
 // bash 命令中出现 git commit 视为"动作后兜底"触发点
 const COMMIT_RE = /(^|\s)git\s+(commit|push|merge|rebase|cherry-pick)/;
 
-const REMINDER = `\n\n【记忆同步提醒】本次操作可能已形成新认知/任务进展（根因、决策、踩坑、状态变化）。按全局 AGENTS.md §6：立即更新 .opencode/ 下 tracking/ 或 memory/ 文档并同步 MEMORY.md 索引，不等会话结束。无新认知可忽略。`;
+const REMINDER = `\n\n【记忆同步提醒】本次操作可能已形成新认知/任务进展（根因、决策、踩坑、状态变化）。按全局 memory-mechanism.md：立即更新 .opencode/ 下 tracking/ 或 memory/ 文档并同步 MEMORY.md 索引，不等会话结束。无新认知可忽略。`;
 
 export const MemorySync = async ({ directory }) => {
   // 项目级 .opencode/ 存在才启用（global 规则机制，其余项目零影响）。
