@@ -1,6 +1,6 @@
 ---
 name: opengauss-ops
-description: openGauss 日常操作知识（建库/授权/gsql/元数据查询/排障/踩坑/兼容模式）。触发：openGauss 建库 / 授权 / gsql / 查元数据 / 排障 / 踩坑 / 兼容模式
+description: openGauss 日常操作知识（建库/授权/gsql/元数据查询/排障/踩坑/兼容模式/分区表维护）。触发：openGauss 建库 / 授权 / gsql / 查元数据 / 排障 / 踩坑 / 兼容模式 / ADD PARTITION / DROP PARTITION / 分区表维护
 ---
 
 # opengauss-ops：openGauss 日常操作知识
@@ -14,7 +14,7 @@ description: openGauss 日常操作知识（建库/授权/gsql/元数据查询/�
 
 **被动触发**（任务上下文出现 openGauss 特征，AI 主动加载）：
 - DSN 为 `postgres://...:5432` 且目标库是 test_db_pg / test_db_mysql / test_db_oracle
-- 出现 openGauss 专属词：gsql / pgx / DBCOMPATIBILITY / dolphin / datcompatibility
+- 出现 openGauss 专属词：gsql / pgx / DBCOMPATIBILITY / dolphin / datcompatibility / PARTITION / pg_partition
 - 用户排查"SQL 慢 / 不走索引 / 连不上 / 时区不对"，上下文涉及 openGauss
 - 写 DDL 涉及 TIMESTAMP / 兼容模式 / 授权，且目标库是 openGauss
 
@@ -121,6 +121,42 @@ executor 封装 `NewFromDriver("pgx", dsn, ...)`，不直接用 pgx 原生驱动
 
 用行存表（列存报 `type not supported in column store`）
 
+### RANGE 分区运维速查（2026-09-03 实证，7.0.0-RC3 PG 模式）
+
+**DDL 形态**：
+
+```sql
+-- 追加分区：上界必须严格递增（超过最后一个已有分区），数字/时间字面量均可
+ALTER TABLE t ADD PARTITION p_YYYYMMDD VALUES LESS THAN (<毫秒或'日期字面量'>);
+-- 删除分区（行存分区 PK 为 GLOBAL 索引，UPDATE 子句维持索引有效——推荐始终携带）
+ALTER TABLE t DROP PARTITION p_YYYYMMDD UPDATE GLOBAL INDEX;
+```
+
+**三报错对照**：
+
+| 报错 | 一句话处置 |
+|------|-----------|
+| `inserted partition key does not map to any table partition` (P0002) | 数据时间超出最后分区上界 → 升序补建分区 |
+| `upper boundary of adding partition MUST overtop last existing partition` | 追加上界必须递增 → 过滤低上界候选（跳期空隙由新分区范围自动覆盖，无需回补） |
+| `can not add partition against NON-PARTITIONED table` | 普通表无补分区捷径 → 只能 DROP 重建分区表 |
+
+**三方向数据语义**（RANGE 无下界 + 有上界硬墙）：
+
+```
+date < 最老分区上界   → 落现存最老分区，不报错（范围自动向过去扩展）
+date 在分区范围内     → 正常落区（裁剪生效，EXPLAIN 见 Selected Partitions: 1）
+date > 最后分区上界   → P0002 拒写（预建窗口未跟上 / 时钟漂移）
+```
+
+**分区表元数据**（比 pg_inherits 直接）：
+
+```sql
+SELECT relname FROM pg_partition
+WHERE parentid = (SELECT oid FROM pg_class WHERE relname = '<table>') AND parttype = 'p';
+```
+
+更多（DROP 三形态对照 / 排障表 / 行归属查询 / 至少保留一分区约束）见来源标注 §分区运维。
+
 ### 迁移 LIKE 查询（MySQL→openGauss）
 
 大小写不敏感：`ILIKE`（简单）或 `lower(s) LIKE lower(?)`（可走 lower 索引）；PG 库禁用 utf8mb4_* collation
@@ -139,3 +175,4 @@ executor 封装 `NewFromDriver("pgx", dsn, ...)`，不直接用 pgx 原生驱动
 | 连接 openGauss（Go） | `og-版本行为矩阵.md §A12` |
 | 建 JSON/JSONB 列 | `og-版本行为矩阵.md §E2` |
 | 迁移 LIKE 查询（MySQL→openGauss） | `06-数据库/docs/调查-openGauss-PG兼容模式字符集与LIKE大小写.md` |
+| RANGE 分区运维速查 | `06-数据库/openGauss/docs/og-通用-分区.md §6` |
