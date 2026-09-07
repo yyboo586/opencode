@@ -155,6 +155,53 @@ SELECT relname FROM pg_partition
 WHERE parentid = (SELECT oid FROM pg_class WHERE relname = '<table>') AND parttype = 'p';
 ```
 
+**按日分区健康验证（生产只读巡检，2026-09-07 实证通过）**：
+
+> 适用前提：程序日维护语义 = 预建「当天..+6 天」分区 + 删除上界 ≤ now−maxlife(7) 天的过期分区；分区名 `c_log_p_YYYYMMDD`（UTC 日），上界 = 次日 00:00 UTC 毫秒。覆盖两服务：rblogserver（表 c_log，生产库 rb_log）+ rbEdgeServer（表 iot_message，生产库 rb_edge，schema=edge）。SQL #1/#2 以 c_log 为例硬编码；#4/#5 双服务词表共用。
+
+```sql
+-- 1. 分区清单：命名连续、含当天分区、newest ∈ [今天+5, 今天+6]
+--    （+6 需当日 24h 维护已 tick；午夜后未 tick 前最长为 +5，正常）
+SELECT relname FROM pg_partition
+WHERE parentid = (SELECT oid FROM pg_class WHERE relname = 'c_log') AND parttype = 'p'
+ORDER BY relname;
+
+-- 2. 行落区分布：除最老分区（RANGE 无下界吸收早期数据，E9 语义）外，
+--    每区行的 date 必须落在「本区日 00:00:00.000 ≤ date < 次日 00:00:00.000」（UTC）
+SELECT pr.relname,
+       count(*) AS rows,
+       to_timestamp(min(c.date)/1000.0) AT TIME ZONE 'UTC' AS min_utc,
+       to_timestamp(max(c.date)/1000.0) AT TIME ZONE 'UTC' AS max_utc
+FROM c_log c JOIN pg_partition pr ON pr.oid = c.tableoid
+GROUP BY pr.relname ORDER BY pr.relname;
+```
+
+```bash
+# 3. DB 服务端日志：观察期不应有客户端取消语句记录
+#    （业务 SQL 挂起被兜底 ctx 取消 → openGauss 留 cancel due to user request；
+#    rblogserver 5s / rbEdgeServer 10-30s 兜底，两服务共用同一 openGauss 实例则并查）
+grep -iE 'cancel.*due to user request|statement due to user' /userdata/local/opengauss/data/pg_log/*.log
+
+# 4. 程序维护日志 — 不存在性判据（应为空，双服务统一词表）
+#    词表覆盖 rblogserver(c_log) + rbEdgeServer(iot_message)：
+#    共同短语 = 清理前置查询失败 / 删除过期分区失败（两服务逐字一致）；
+#    任务级包装差异 = clog_daily_maintenance failed vs iot_message 日维护失败。
+#    日志布局差异：rblogserver 单文件 app.log（INFO+ERROR 同文件）；
+#    rbEdgeServer 按级别分文件 logger.log / logger_err.log / logger_warn.log。
+grep -nE 'clog_daily_maintenance failed|iot_message 日维护失败|清理前置查询失败|删除过期分区失败|context deadline exceeded' \
+  /userdata/local/rblogserver/logs/app.log \
+  /userdata/local/rbEdgeServer/logs/logger.log /userdata/local/rbEdgeServer/logs/logger_err.log /userdata/local/rbEdgeServer/logs/logger_warn.log
+
+# 5. 程序维护日志 — 存在性判据（应非空：预建/删除动作确实发生过）
+grep -nE 'created partition (c_log|iot_message)_p_|已删除过期分区' \
+  /userdata/local/rblogserver/logs/app.log /userdata/local/rbEdgeServer/logs/logger.log
+```
+
+判定注意：
+- 「已删除过期分区」日志只在分区上界落进 `now−maxlife` 后才出现（整分区过期 + 每日一轮 → 实际保留 N~N+2 天）；**部署不足 maxlife 天看不到删除日志属正常**，别误判失败
+- `context canceled` 出现在请求路径（如 SaveRbLog failed）＝客户端断连噪声，与分区维护无关；`context deadline exceeded` 任何路径出现都需排查（单笔操作兜底超时被触发 = 有 SQL 挂起，rblogserver 5s / rbEdgeServer 10-30s）
+- 上界毫秒对齐自查：分区名后缀 D 的期望上界 = `((to_date(D,'YYYYMMDD') - DATE '1970-01-01') + 1) * 86400000`，与 pg_partition 存储值比对
+
 更多（DROP 三形态对照 / 排障表 / 行归属查询 / 至少保留一分区约束）见来源标注 §分区运维。
 
 ### 迁移 LIKE 查询（MySQL→openGauss）
@@ -176,3 +223,5 @@ WHERE parentid = (SELECT oid FROM pg_class WHERE relname = '<table>') AND partty
 | 建 JSON/JSONB 列 | `og-版本行为矩阵.md §E2` |
 | 迁移 LIKE 查询（MySQL→openGauss） | `06-数据库/docs/调查-openGauss-PG兼容模式字符集与LIKE大小写.md` |
 | RANGE 分区运维速查 | `06-数据库/openGauss/docs/og-通用-分区.md §6` |
+
+> 「按日分区健康验证」小节为 rblogserver 生产验证实证快照（2026-09-07），非 Practice 仓库内容，Practice 无对应原文。

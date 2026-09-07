@@ -4,8 +4,14 @@
   "lsp": true,
   "instructions": ["~/.config/opencode/memory-mechanism.md"],
   "permission": {
+    "lsp": "allow",
+    "skill": "allow",
+    "todowrite": "allow",
+    "question": "allow",
+    
     "*": "allow",
     "git stash": "deny",
-    "git push": "deny"
+    "git push": "deny",
+    "rm": "deny",
   }
 }
