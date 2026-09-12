@@ -63,10 +63,13 @@ echo "Nacos 探活 OK"
 # 2026-09-03 拍板：清理死字段——logusername/loguserpwd（8bd799c 删消费方，log 改写 openGauss t_log）、
 # maxPoolSize/maxWaitTime（无消费方且 camelCase 键不匹配 yaml.v2 小写键）、writeConcern（struct 未导出 yaml 不可达）。
 # 残留旧字段无害（yaml.v2 非严格模式静默忽略），但会误导配置排查，不再播种。
+# 2026-09-08 起密码契约变更（dataserver 1.4.11 缺陷 #6 修复）：pkg/database.go Mongo URI
+# 凭据改 url.QueryEscape 运行时转义 → 配置写原形密码（Test@12345678）；
+# 历史 %40 写法会被二次转义成 %2540 导致认证失败。
 MONGO_CONTENT='host: 127.0.0.1
 port: 27017
 user: admin
-password: Test%4012345678
+password: Test@12345678
 databasename: rbiot'
 
 FORWARD_CONTENT='forwardurl: "/api/local/run_scene"

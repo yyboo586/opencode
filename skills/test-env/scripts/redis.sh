@@ -1,41 +1,57 @@
 #!/bin/bash
 # redis.sh — Redis 测试环境部署（自包含）
-# 规则（2026-08-29）：同名容器已存在（无论运行/停止）→ 换名换端口新部署，绝不复用/删除已有容器；不挂载主机目录。
-# 端口：默认 6379，被占用自动向后探测；密码 Test@1234（原 redis.conf 核心项内联）
+# 规则：单容器，固定名 redis、默认端口 6379；已运行则跳过，已停止则 docker start 复用，不存在则创建。
+# 配置挂载：assets/redis/redis.conf + entrypoint.sh（AOF 自愈 wrapper）；密码 Test@1234，脚本校验无密码访问被拒
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/lib-deploy.sh"
+REDIS_DIR="$SCRIPT_DIR/../assets/redis"
+CONTAINER_NAME="redis"
+REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_PWD='Test@1234'
 
-CONTAINER_NAME=$(next_name redis)
-REDIS_PORT=$(free_port "${REDIS_PORT:-6379}")
+# 密码契约校验：无密码 PING 必须被拒（NOAUTH），带密码 PING 必须通过
+verify_auth() {
+    if docker exec "$CONTAINER_NAME" redis-cli ping 2>/dev/null | grep -q PONG; then
+        echo "❌ Redis 未设置密码（无密码 PING 成功）：redis.conf 未生效" >&2
+        echo "   执行 'docker rm -f $CONTAINER_NAME' 后重跑本脚本可重建" >&2
+        exit 1
+    fi
+    if ! docker exec "$CONTAINER_NAME" redis-cli -a "$REDIS_PWD" ping 2>/dev/null | grep -q PONG; then
+        echo "❌ Redis 密码校验失败（期望密码 $REDIS_PWD）" >&2
+        exit 1
+    fi
+}
 
-echo "部署 Redis → 容器 $CONTAINER_NAME（端口 $REDIS_PORT）"
-if [ "$REDIS_PORT" != "6379" ]; then
-    echo "  （6379 已占用，自动换用 $REDIS_PORT）"
+if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    verify_auth
+    echo "✅ Redis 已在运行（容器 $CONTAINER_NAME，端口 $REDIS_PORT），跳过"
+    exit 0
 fi
 
-# redis.conf 核心项内联为命令行参数（原 assets/redis/redis.conf：密码 Test@1234 / 512mb LRU / save 300 1）
-# 日志走 stdout（docker logs 可查），不挂载主机目录
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    -p "$REDIS_PORT":6379 \
-    redis:7.4 \
-    redis-server \
-        --requirepass 'Test@1234' \
-        --maxmemory 512mb \
-        --maxmemory-policy allkeys-lru \
-        --save 300 1 \
-        --dir /data
+if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    echo "启动已存在的 Redis 容器 $CONTAINER_NAME..."
+    docker start "$CONTAINER_NAME" >/dev/null
+else
+    echo "创建 Redis 容器 $CONTAINER_NAME（端口 $REDIS_PORT）..."
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        -p "$REDIS_PORT":6379 \
+        -v "$REDIS_DIR/redis.conf":/etc/redis/redis.conf \
+        -v "$REDIS_DIR/entrypoint.sh":/usr/local/bin/entrypoint.sh:ro \
+        -v /tmp/logs:/tmp/logs \
+        redis:7.4 /usr/local/bin/entrypoint.sh >/dev/null
+fi
 
 echo "等待 Redis 就绪（轮询 ping）..."
 for i in $(seq 1 30); do
-    if docker exec "$CONTAINER_NAME" redis-cli -a 'Test@1234' ping 2>/dev/null | grep -q PONG; then
+    if docker exec "$CONTAINER_NAME" redis-cli -a "$REDIS_PWD" ping 2>/dev/null | grep -q PONG; then
+        verify_auth
         echo "✅ Redis 就绪"
         echo "   容器: $CONTAINER_NAME"
         echo "   端口: localhost:$REDIS_PORT"
-        echo "   密码: Test@1234"
+        echo "   密码: $REDIS_PWD"
         exit 0
     fi
     sleep 2

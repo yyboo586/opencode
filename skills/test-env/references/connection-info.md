@@ -46,7 +46,7 @@ openGauss 容器一次部署会按 `DBCOMPATIBILITY` 自动创建 3 个同 user 
 |------|-----|
 | 端口 | 6379 |
 | 版本 | 7.4 |
-| 密码 | 无 |
+| 密码 | Test@1234 |
 
 ### Nacos
 
@@ -75,15 +75,15 @@ openGauss 容器一次部署会按 `DBCOMPATIBILITY` 自动创建 3 个同 user 
 | 控制台 | `http://localhost:18083` |
 | 网络 | bridge，端口直连 `localhost` |
 
-## 数据库容器内连接 & Go DSN
+## 数据库连接命令 & Go DSN
 
-| 数据库 | 容器内连接命令（默认连 `test_db` / `test_db_oracle`） | Go DSN（3 openGauss 库全列） |
+| 数据库 | 连接命令（默认连 `test_db` / `test_db_oracle`） | Go DSN（3 openGauss 库全列） |
 |--------|--------------|--------|
 | mysql | `docker exec -it mysql mysql -u test_user -p'Test@1234' test_db` | `test_user:Test@1234@tcp(localhost:3306)/test_db?charset=utf8mb4&parseTime=True` |
 | opengauss (`test_db_oracle`) | `docker exec -it opengauss bash -c "LD_LIBRARY_PATH=/usr/local/opengauss/lib /usr/local/opengauss/bin/gsql -h localhost -U test_user -d test_db_oracle -W 'Test@1234'"` | `postgres://test_user:Test@1234@localhost:5432/test_db_oracle` |
 | opengauss (`test_db_mysql`) | 同上，`-d test_db_mysql` | `postgres://test_user:Test@1234@localhost:5432/test_db_mysql` |
 | opengauss (`test_db_pg`) | 同上，`-d test_db_pg` | `postgres://test_user:Test@1234@localhost:5432/test_db_pg` |
-| tidb | `docker exec -it tidb mysql -h 127.0.0.1 -P 4000 -u test_user -p'Test@1234' test_db` | `test_user:Test@1234@tcp(localhost:4000)/test_db?charset=utf8mb4&parseTime=True` |
+| tidb | `mysql -h 127.0.0.1 -P 4000 -u test_user -p'Test@1234' test_db`（宿主机客户端；TiDB 容器内无 mysql CLI） | `test_user:Test@1234@tcp(localhost:4000)/test_db?charset=utf8mb4&parseTime=True` |
 | mongo | `docker exec -it mongo mongo -u test_user -p 'Test@12345678' --authenticationDatabase rbiot rbiot` | `mongodb://test_user:Test@12345678@localhost:27017/rbiot?authSource=rbiot` |
 
 > **Mongo URI 无 authSource 的默认行为**：mongo-driver 默认 authSource=URI 中的库名（即 `rbiot`），与 test_user 所在库一致，业务侧可省略 authSource；但显式写上更稳（防库名变更踩坑）。admin/root 管理操作必须 `--authenticationDatabase admin`。
@@ -119,13 +119,13 @@ Redis 7.4 已就绪（端口 6379）
 连接信息:
   主机: localhost
   端口: 6379
-  密码: 无
+  密码: Test@1234
 
 连接命令:
-  redis-cli -h localhost -p 6379
+  redis-cli -h localhost -p 6379 -a Test@1234
 
 Go SDK:
-  使用 go-redis，地址为 "localhost:6379"
+  使用 go-redis，地址为 "localhost:6379"，密码 Test@1234
 ```
 
 ### Nacos

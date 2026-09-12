@@ -1,6 +1,6 @@
 #!/bin/bash
 # down.sh — 停止 test-env 部署的测试容器（自包含）
-# 只停本 skill 部署的实例（mongo/redis/nacos/emqx 及 -2/-3 后缀实例），不碰用户已有容器
+# 只停本 skill 部署的实例（固定名 mongo/redis/nacos/emqx，含旧规则遗留的 -2/-3 后缀实例），不碰用户已有容器
 
 set -euo pipefail
 

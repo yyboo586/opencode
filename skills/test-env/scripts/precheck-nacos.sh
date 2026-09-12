@@ -11,7 +11,7 @@ errors=0
 
 echo "=== Nacos 前置检查 ==="
 
-if docker ps --filter "name=opengauss" --format "{{.Names}}" | grep -q opengauss; then
+if docker ps --filter "name=^opengauss$" --format "{{.Names}}" | grep -qx opengauss; then
     echo "  [OK] openGauss 容器已运行"
 else
     echo "  [FAIL] openGauss 容器未运行，请先启动 openGauss"

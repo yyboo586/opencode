@@ -1,7 +1,7 @@
 #!/bin/bash
 # nacos.sh — Nacos 2.4.3 + openGauss 部署（自包含）
-# 规则（2026-08-29）：同名容器已存在（无论运行/停止）→ 换名换端口新部署，绝不复用/删除已有容器；不挂载主机目录。
-# 配置注入：docker create → docker cp（plugins jar + application.properties）→ docker start
+# 规则：单容器，固定名 nacos、默认端口 8848/9848；已运行则跳过，已停止则 docker start 复用，不存在则创建。
+# 配置挂载：assets/nacos/plugins（openGauss 方言 jar）+ custom-application.properties
 # 前置条件:
 #   1. opengauss 容器在跑, 0.0.0.0:5432 端口已开
 #   2. omm 密码已设为 Password@1234 (否则 nacos_config 库初始化失败)
@@ -10,25 +10,29 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/lib-deploy.sh"
-
-CONTAINER_NAME=$(next_name nacos)
 NACOS_DIR="$SCRIPT_DIR/../assets/nacos"
+LOG_DIR="${LOG_DIR:-$HOME/nacos-logs}"
 PLUGINS_DIR="$NACOS_DIR/plugins"
 APP_PROPS="$NACOS_DIR/custom-application.properties"
 NACOS_IMAGE="nacos/nacos-server:v2.4.3"
 
+CONTAINER_NAME="nacos"
 NACOS_OPENGauss_HOST="${NACOS_OPENGauss_HOST:-host.docker.internal}"
 NACOS_OPENGauss_PORT="${NACOS_OPENGauss_PORT:-5432}"
-NACOS_SERVER_PORT=$(free_port "${NACOS_SERVER_PORT:-8848}")
-NACOS_GRPC_PORT=$(free_port "${NACOS_GRPC_PORT:-9848}")
+NACOS_SERVER_PORT="${NACOS_SERVER_PORT:-8848}"
+NACOS_GRPC_PORT="${NACOS_GRPC_PORT:-9848}"
 
-# 前置检查
 if ! command -v docker &>/dev/null; then
     echo "❌ 找不到 docker 命令" >&2
     exit 1
 fi
 
+if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    echo "✅ Nacos 已在运行（容器 $CONTAINER_NAME，HTTP $NACOS_SERVER_PORT / gRPC $NACOS_GRPC_PORT），跳过"
+    exit 0
+fi
+
+# 前置检查
 if [[ ! -d "$PLUGINS_DIR" ]] || ! ls "$PLUGINS_DIR"/*.jar &>/dev/null; then
     echo "❌ $PLUGINS_DIR 下缺少 openGauss 方言插件 jar" >&2
     exit 1
@@ -39,33 +43,34 @@ if [[ ! -f "$APP_PROPS" ]]; then
     exit 1
 fi
 
-if ! docker ps --format '{{.Names}}' | grep -q "^opengauss$"; then
+if ! docker ps --format '{{.Names}}' | grep -qx "opengauss"; then
     echo "❌ opengauss 容器未运行, 请先启动 openGauss" >&2
     exit 1
 fi
 
-echo "部署 Nacos → 容器 $CONTAINER_NAME（HTTP $NACOS_SERVER_PORT / gRPC $NACOS_GRPC_PORT）"
-if [ "$NACOS_SERVER_PORT" != "8848" ]; then
-    echo "  （8848 已占用，自动换用 $NACOS_SERVER_PORT）"
+if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    echo "启动已存在的 Nacos 容器 $CONTAINER_NAME..."
+    docker start "$CONTAINER_NAME" >/dev/null
+else
+    mkdir -p "$LOG_DIR"
+    echo "创建 Nacos 容器 $CONTAINER_NAME（HTTP $NACOS_SERVER_PORT / gRPC $NACOS_GRPC_PORT）..."
+    docker run -d --name "$CONTAINER_NAME" \
+        -v /etc/localtime:/etc/localtime \
+        -v "$LOG_DIR":/home/nacos/logs \
+        -v "$PLUGINS_DIR":/home/nacos/plugins:ro \
+        -v "$APP_PROPS":/home/nacos/conf/application.properties:ro \
+        -e MODE=standalone \
+        -e PREFER_HOST_MODE=ip \
+        -e TIME_ZONE=Asia/Shanghai \
+        -e JVM_XMX=1g \
+        -e JVM_XMS=1g \
+        -e JVM_XMN=512m \
+        -e NACOS_AUTH_ENABLE=false \
+        -p "${NACOS_SERVER_PORT}:8848" \
+        -p "${NACOS_GRPC_PORT}:9848" \
+        --add-host=host.docker.internal:host-gateway \
+        "$NACOS_IMAGE" >/dev/null
 fi
-
-# create → cp（插件 + 配置）→ start，全程无主机目录挂载
-CID=$(docker create --name "$CONTAINER_NAME" \
-    -e MODE=standalone \
-    -e PREFER_HOST_MODE=ip \
-    -e TIME_ZONE=Asia/Shanghai \
-    -e JVM_XMX=1g \
-    -e JVM_XMS=1g \
-    -e JVM_XMN=512m \
-    -e NACOS_AUTH_ENABLE=false \
-    -p "${NACOS_SERVER_PORT}:8848" \
-    -p "${NACOS_GRPC_PORT}:9848" \
-    --add-host=host.docker.internal:host-gateway \
-    "$NACOS_IMAGE")
-
-docker cp "$PLUGINS_DIR"/. "$CID":/home/nacos/plugins/
-docker cp "$APP_PROPS" "$CID":/home/nacos/conf/application.properties
-docker start "$CID" >/dev/null
 
 echo "⏳ 等待 Nacos 启动..."
 NACOS_URL="http://127.0.0.1:${NACOS_SERVER_PORT}"

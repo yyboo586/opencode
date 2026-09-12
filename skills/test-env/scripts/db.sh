@@ -52,7 +52,7 @@ start_db() {
             wait_healthy opengauss 180 "$COMPOSE_FILE"
             ;;
         mongo)
-            # Mongo 走独立脚本（换名换端口 + 无主机挂载，见 mongo.sh）
+            # Mongo 走独立脚本（固定名/默认端口 + 主机挂载，见 mongo.sh）
             bash "$SCRIPT_DIR/mongo.sh"
             ;;
         *)

@@ -7,7 +7,7 @@ description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Mongo、Redi
 
 > 目录自包含：Compose、SQL、配置、JAR、安装脚本全部位于本目录的 `assets/`。脚本调用一律走 `SCRIPT_DIR/../assets/...`，**不依赖仓库根 `06-数据库/`、`22-Redis/`、`25-Nacos/`、`26-EMQX/`**。
 >
-> **部署规则（2026-08-29 起全组件统一）**：同名容器已存在（无论运行/停止）→ 换名换端口新部署（`<name>-2`、`<name>-3`…，端口自动探测避让），**绝不复用/删除已有容器**；**所有容器不挂载主机目录**（配置注入走 docker cp 或环境变量）。共享函数见 `scripts/lib-deploy.sh`（next_name / free_port）。
+> **部署规则**：每个组件只部署一个容器，容器名固定（`mysql` / `opengauss` / `tidb` / `mongo` / `redis` / `nacos` / `emqx`），端口用默认值。同名容器已运行 → 跳过；已停止 → `docker start` 复用；不存在 → 新建。配置/初始化脚本通过主机目录挂载注入。
 
 ## 触发方式
 
@@ -17,9 +17,9 @@ description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Mongo、Redi
 |----------|------|
 | "启动 mysql" / "起个 mysql" | 检测 → 启动 MySQL → 输出连接信息 |
 | "启动 nacos" / "部署 nacos" | 先确认 openGauss 已运行 → 启动 Nacos |
-| "启动 redis" | 检测 → 启动 Redis（同名存在则换名换端口新部署） |
-| "启动 mongo" / "起个 mongo" | 检测 → 启动 Mongo（认证模式，同名存在则换名换端口新部署） |
-| "启动 emqx" / "部署 emqx" | 检测 → 启动 EMQX（同名存在则换名换端口新部署） |
+| "启动 redis" | 检测 → 启动 Redis（已运行则跳过） |
+| "启动 mongo" / "起个 mongo" | 检测 → 启动 Mongo（认证模式，已运行则跳过） |
+| "启动 emqx" / "部署 emqx" | 检测 → 启动 EMQX（已运行则跳过） |
 | "环境状态" / "看看环境" | 运行 `scripts/status.sh` 查看所有组件 |
 | "停环境" / "关环境" | 确认后运行 `scripts/down.sh`（只停本脚本部署的实例，不碰用户已有容器） |
 | "起环境" / 未指定组件 | 启动全部组件（数据库 + Redis + Nacos + EMQX） |
@@ -71,7 +71,7 @@ bash .opencode/skills/test-env/scripts/db.sh up          # 全部
 bash .opencode/skills/test-env/scripts/redis.sh
 ```
 
-脚本内置幂等：已运行则跳过。密码 `Test@1234`（见 `assets/redis/redis.conf`）。
+脚本内置：已运行则跳过；已停止则 `docker start` 复用；不存在则按默认端口创建。密码 `Test@1234`（挂载 `assets/redis/redis.conf`），并校验无密码访问被拒（复用旧容器时同样生效）。
 
 ### Nacos
 
@@ -79,7 +79,7 @@ bash .opencode/skills/test-env/scripts/redis.sh
 bash .opencode/skills/test-env/scripts/nacos.sh
 ```
 
-脚本内置：停旧容器 → 启动 → 90s 内轮询 `/nacos/v1/console/health/readiness` → 验证 server/state 端点。
+脚本内置：已运行则跳过；已停止则 `docker start` 复用；不存在则创建。启动后 90s 内轮询 `/nacos/v1/console/health/readiness` → 验证 server/state 端点。
 
 **前置检查**：调用 Nacos 安装脚本前，先运行 `bash .opencode/skills/test-env/scripts/precheck-nacos.sh` 确认：
 1. openGauss 容器已运行
@@ -95,9 +95,7 @@ bash .opencode/skills/test-env/scripts/mongo.sh
 # 或走 db.sh：bash .opencode/skills/test-env/scripts/db.sh up mongo
 ```
 
-脚本内置：同名容器已存在（无论运行/停止）→ 换名换端口新部署（mongo-2、mongo-3…，端口 27017 起自动探测）；不挂载主机目录（init-mongo.js 就绪后 docker cp 注入执行）。root=admin/Test@12345678，业务=test_user/Test@12345678（rbiot 库）。
-
-> ⚠️ 部署规则（2026-08-29 起全组件统一）：**同名容器已存在（运行或停止）一律换名换端口新部署，绝不复用/删除已有容器；所有容器不挂载主机目录**（配置注入走 docker cp 或环境变量）。
+脚本内置：已运行则跳过；已停止则 `docker start` 复用；不存在则创建（固定容器名 mongo、端口 27017）。init-mongo.js 挂载到 `/docker-entrypoint-initdb.d/`（仅首次初始化执行）。root=admin/Test@12345678，业务=test_user/Test@12345678（rbiot 库）。
 
 ### EMQX
 
@@ -105,7 +103,7 @@ bash .opencode/skills/test-env/scripts/mongo.sh
 bash .opencode/skills/test-env/scripts/emqx.sh
 ```
 
-脚本内置：停旧容器 → 启动（bridge 网络，端口 1883/8883/8083/8084/18083）→ 90s 内轮询 `/api/v5/status`（EMQX 5.x 默认凭据 `admin/public`）。
+脚本内置：已运行则跳过；已停止则 `docker start` 复用；不存在则创建（bridge 网络，端口 1883/8883/8083/8084/18083）。启动后 90s 内轮询 `/api/v5/status`（EMQX 5.x 默认凭据 `admin/public`）。
 
 无前置依赖，与其他组件互不耦合。Docker 镜像为 `emqx/emqx:5.2.0`，端口配置参考 Deployment 仓库 `1.7.1/sh/install_emqx.sh`，区别仅在去掉 `rbnetwork` 自定义网络，改用 `localhost` 直连以适配 test-env 跨组件场景。
 
@@ -135,14 +133,14 @@ bash .opencode/skills/test-env/scripts/emqx.sh
 
 ## 部署后访问（docker exec）
 
-部署完成后按组件选对应的进入方式。**MySQL / TiDB / Redis / Nacos / EMQX 都是普通 CLI**，直接 `docker exec -it` 即可；**openGauss 是特例**：`gsql` 不在 PATH，必须带 `LD_LIBRARY_PATH`。给用户生产/目标机命令前先核对环境（如部署机 uname -m、busybox 无 pidof -f、容器名 docker ps 实测），不套本地经验（教训：busybox 无 pidof -f 按本地习惯给命令）。
+部署完成后按组件选对应的进入方式。**MySQL / Redis / Nacos / EMQX 都是普通 CLI**，直接 `docker exec -it` 即可；**TiDB 容器无 mysql 客户端**，用宿主机 `mysql` 连 4000 端口；**openGauss 是特例**：`gsql` 不在 PATH，必须带 `LD_LIBRARY_PATH`。给用户生产/目标机命令前先核对环境（如部署机 uname -m、busybox 无 pidof -f、容器名 docker ps 实测），不套本地经验（教训：busybox 无 pidof -f 按本地习惯给命令）。
 
 ### 直连类（一行命令即可）
 
 | 组件 | 命令 | 说明 |
 |------|------|------|
 | MySQL | `docker exec -it mysql mysql -u test_user -p'Test@1234' test_db` | mysql CLI 在容器内 PATH 中 |
-| TiDB | `docker exec -it tidb mysql -h 127.0.0.1 -P 4000 -u test_user -p'Test@1234' test_db` | TiDB 容器自带 mysql 客户端 |
+| TiDB | `mysql -h 127.0.0.1 -P 4000 -u test_user -p'Test@1234' test_db` | 宿主机 mysql 客户端（`pingcap/tidb:v8.5.0` 容器内无 CLI，实测） |
 | Mongo | `docker exec -it mongo mongo -u test_user -p 'Test@12345678' --authenticationDatabase rbiot rbiot` | 认证模式；root 管理操作加 `-u admin -p ... --authenticationDatabase admin` |
 | Redis | `docker exec -it redis redis-cli -a Test@1234` | entrypoint 启的就是 redis-server，CLI 同容器可用 |
 | Nacos | `curl http://localhost:8848/nacos/actuator/health` | 控制台浏览器访问；容器内无 curl 探活需求 |
