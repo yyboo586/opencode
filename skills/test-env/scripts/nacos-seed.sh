@@ -17,11 +17,14 @@
 #   （DB=test_db_pg/test_user，服务端口 8008，cert 走 execDir 相对路径 cert/...）。
 #   database 必须含 maxdatalife>30（TTL fail-fast panic）——旧播种内容缺此字段，--force 覆盖。
 #
-# 组 3: group=log_server（rblogserver，2026-09-03 新增）
-#   单 dataId=run.yaml（rblogserver 唯一配置源，Nacos 硬依赖无本地模式）。
-#   内容对齐 cmd/rblogserver/cache/config/run-test.yaml（e2e 测试同源模板）：
-#   DB=test_db_pg/test_user，HTTP 18008 / gRPC 19009，Redis localhost。
-#   注意：rblogserver 启动链无本地 fallback，ip/port 空直接 panic——组 3 必播。
+# 组 3: group=log_server（rblogserver）——已移除（2026-09-23）
+#   rblogserver 播种改由其仓 run-local.sh 自播种（每次启动发布 configs/run.yaml，
+#   文件即真源），本脚本不再持有该配置副本；e2e TestMain 亦自行发布覆盖。
+#
+# 组 4: group=rbEdgeServer（rbedgeserver）——已移除（2026-09-23）
+#   rbEdgeServer 播种改由其仓 run-local.sh 自播种（每次启动覆盖发布 configs/run.yaml，
+#   文件即真源，已入库）；platform/local compose 一键形态由 run.sh seed_edge 从同一文件播种。
+#   本脚本不再持有该配置副本。
 #
 # 幂等策略：先 GET 判断，已存在则跳过（--force 覆盖）
 # API：Nacos OpenAPI v1，鉴权关闭（test-env custom-application.properties）
@@ -217,58 +220,17 @@ datadirecttopic: '"'"'v1/device/{{clientid}}/data'"'"'
 responsedirecttopic: '"'"'v1/device/{{clientid}}/attributes/response'"'"''
 
 # ============================================================
-# 组 3 播种内容（log_server / rblogserver，2026-09-03 拍板）
-# 内容对齐 cmd/rblogserver/cache/config/run-test.yaml（e2e 测试同源模板）。
-# rblogserver 启动链 Nacos 硬依赖（无本地模式），组 3 必播。
+# 组 3 播种内容（log_server / rblogserver）——已移除（2026-09-23）
+# 真源迁至 rblogserver 仓 configs/run.yaml（已入库）；播种改由其仓
+# run-local.sh 启动前自播种。前提（旧模板 run-test.yaml gitignored、
+# fresh clone 拿不到）已被 run.yaml 入库重构推翻，硬编码副本随之废止。
 # ============================================================
 
-RBLOG_RUN_YAML_CONTENT='# run.yaml — 测试环境配置（rblogserver 本地启动 / e2e 测试用）
-# 对齐 cmd/rblogserver/cache/config/run-test.yaml；生产模板见 run.yaml（同目录）。
-server:
-  http:
-    addr: 0.0.0.0:18008
-    timeout: 1s
-  grpc:
-    addr: 0.0.0.0:19009
-    timeout: 1s
-data:
-  maxlife: 6
-  database:
-    driver: pgx
-    source: postgres://test_user:Test@1234@127.0.0.1:5432/test_db_pg
-    max_open_conns: 50
-    max_idle_conns: 10
-    conn_max_life_minutes: 30
-redis:
-  addr: "127.0.0.1:6379"
-  password: "Test@1234"
-  trace_stream: "rb:trace:stream"
-  logevent_stream: "rb:logevent:stream"
-  consumer_group: "rb-log-server"
-  consumer_name: "consumer-1"
-  read_count: 10
-  block_ms: 5000
-  stream_max_len: 500
-  dial_timeout_ms: 1000
-  read_timeout_ms: 2000
-  write_timeout_ms: 1000
-  message_timeout_ms: 3000
-trace:
-  scan_interval: 1
-  scan_delay: 1
-  scan_page_size: 100
-  clean_interval: 15
-  retention_ttl: 1
-  pre_create_months: 3
-  partition_interval: 86400
-app_log:
-  filename: ./logs/app.log
-  max_size: 100
-  max_age: 7
-  max_backups: 10
-  local_time: true
-  compress: false
-  level: debug'
+# ============================================================
+# 组 4 播种内容（rbEdgeServer / rbedgeserver）——已移除（2026-09-23）
+# 真源迁至 rbEdgeServer 仓 configs/run.yaml（已入库）；播种由其仓 run-local.sh 与
+# platform/local/run.sh seed_edge 从同一文件完成。本脚本不再持有该配置副本。
+# ============================================================
 
 # ---------- 通用播种函数 ----------
 seed_config() {
@@ -329,10 +291,9 @@ seed_config "iot_server" "worker"        "$RB_WORKER_CONTENT"
 seed_config "iot_server" "visual_device" "$RB_VISUAL_DEVICE_CONTENT"
 seed_config "iot_server" "system_topic"  "$RB_SYSTEM_TOPIC_CONTENT"
 
-# ---------- 组 3：log_server（rblogserver） ----------
-echo
-echo "=== 组 3：log_server（rblogserver）==="
-seed_config "log_server" "run.yaml"  "$RBLOG_RUN_YAML_CONTENT"
+# ---------- 组 3：log_server（rblogserver）已移除，见头部说明 ----------
+
+# ---------- 组 4：rbEdgeServer（rbedgeserver）已移除，见头部说明 ----------
 
 # ---------- 回读验证 ----------
 echo
@@ -352,7 +313,7 @@ verify_group() {
 }
 verify_group "iot_data_server" mongo forward database mqtt_forward
 verify_group "iot_server" database device_acl device_api emqx grpc https server session worker visual_device system_topic
-verify_group "log_server" run.yaml
+# 组 3（log_server/run.yaml）与组 4（rbEdgeServer/run.yaml）已移除：由各自仓 run-local.sh 自播种
 
 echo
 echo "=== 数据库层确认（openGauss config_info）==="
@@ -360,4 +321,5 @@ docker exec opengauss su - omm -c "gsql -d nacos_config -c \"SELECT data_id, gro
     echo "（gsql 查询失败，以 API 回读为准）"
 
 echo
-echo "🎉 播种完成。rbIotDataserver（iot_data_server）+ rbiotserver（iot_server）+ rblogserver（log_server）均可走 Nacos 配置链"
+echo "🎉 播种完成。rbIotDataserver（iot_data_server）+ rbiotserver（iot_server）均可走 Nacos 配置链"
+echo "   （rblogserver/log_server、rbEdgeServer/rbEdgeServer 组已移除：由各自仓 run-local.sh 启动前自播种）"

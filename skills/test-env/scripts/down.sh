@@ -21,5 +21,11 @@ docker ps -a --format '{{.Names}}' | grep -E '^emqx(-[0-9]+)?$' | xargs -r docke
 echo "停止 Mongo（含后缀实例）..."
 docker ps -a --format '{{.Names}}' | grep -E '^mongo(-[0-9]+)?$' | xargs -r docker rm -f
 
+echo "停止 Jaeger（含后缀实例）..."
+docker ps -a --format '{{.Names}}' | grep -E '^jaeger(-[0-9]+)?$' | xargs -r docker rm -f
+
+echo "停止 Mock（endpoint/http/device-sim）..."
+docker ps -a --format '{{.Names}}' | grep -E '^mock-(endpoint|http|device-sim)$' | xargs -r docker rm -f
+
 echo ""
 echo "所有 test-env 容器已停止"

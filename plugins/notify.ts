@@ -22,8 +22,6 @@
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
-import type { Plugin } from "@opencode-ai/plugin"
-import type { Event } from "@opencode-ai/sdk"
 // @ts-expect-error - installed at runtime by OCX
 import detectTerminal from "detect-terminal"
 // @ts-expect-error - installed at runtime by OCX
@@ -74,6 +72,44 @@ interface TerminalInfo {
 	name: string | null
 	bundleId: string | null
 	processName: string | null
+}
+
+/** 会话最小信息（v1 client 与 v2 ctx 取回后归一） */
+interface NotifySessionRef {
+	readonly title?: string
+	readonly parentID?: string
+}
+
+/** 取会话依赖：v1 → client.session.get；v2 → ctx.session.get */
+type NotifyGetSession = (sessionID: string) => Promise<NotifySessionRef | undefined>
+
+/** v1 tool.execute.before 归一事件 */
+interface NotifyToolBeforeEvent {
+	tool: string
+	sessionID: string
+	callID: string
+}
+
+/** v1 event 回调归一事件（v2 事件在接线层归一为同一形态） */
+interface NotifyServerEvent {
+	type: string
+	properties: Record<string, unknown>
+}
+
+/** v2 插件上下文（最小面；不引入 @opencode/plugin 依赖） */
+interface V2NotifyContext {
+	session: {
+		get(input: { sessionID: string }): Promise<NotifySessionRef | undefined>
+	}
+	tool: {
+		hook(
+			name: "execute.before",
+			callback: (event: { tool: string; sessionID: string; id: string }) => void | Promise<void>,
+		): Promise<unknown>
+	}
+	event: {
+		subscribe(options: { signal: AbortSignal }): AsyncIterable<{ type: string; data?: unknown }>
+	}
 }
 
 const DEFAULT_CONFIG: NotifyConfig = {
@@ -236,11 +272,14 @@ function isQuietHours(config: NotifyConfig): boolean {
 // PARENT SESSION DETECTION
 // ==========================================
 
-async function isParentSession(client: OpencodeClient, sessionID: string): Promise<boolean> {
+async function isParentSession(
+	getSession: NotifyGetSession,
+	sessionID: string,
+): Promise<boolean> {
 	try {
-		const session = await client.session.get({ path: { id: sessionID } })
+		const session = await getSession(sessionID)
 		// No parentID means this IS the parent/root session
-		return !session.data?.parentID
+		return !session?.parentID
 	} catch {
 		// If we can't fetch, assume it's a parent to be safe (notify rather than miss)
 		return true
@@ -446,7 +485,7 @@ async function sendNotification(
 // ==========================================
 
 async function handleSessionIdle(
-	client: OpencodeClient,
+	getSession: NotifyGetSession,
 	sessionID: string,
 	config: NotifyConfig,
 	terminalInfo: TerminalInfo,
@@ -454,7 +493,7 @@ async function handleSessionIdle(
 ): Promise<void> {
 	// Check if we should notify for this session
 	if (!config.notifyChildSessions) {
-		const isParent = await isParentSession(client, sessionID)
+		const isParent = await isParentSession(getSession, sessionID)
 		if (!isParent) return
 	}
 
@@ -467,9 +506,9 @@ async function handleSessionIdle(
 	// Get session info for context
 	let sessionTitle = "Task"
 	try {
-		const session = await client.session.get({ path: { id: sessionID } })
-		if (session.data?.title) {
-			sessionTitle = session.data.title.slice(0, 50)
+		const session = await getSession(sessionID)
+		if (session?.title) {
+			sessionTitle = session.title.slice(0, 50)
 		}
 	} catch {
 		// Use default title
@@ -489,7 +528,7 @@ async function handleSessionIdle(
 }
 
 async function handleSessionError(
-	client: OpencodeClient,
+	getSession: NotifyGetSession,
 	sessionID: string,
 	error: string | undefined,
 	config: NotifyConfig,
@@ -498,7 +537,7 @@ async function handleSessionError(
 ): Promise<void> {
 	// Check if we should notify for this session
 	if (!config.notifyChildSessions) {
-		const isParent = await isParentSession(client, sessionID)
+		const isParent = await isParentSession(getSession, sessionID)
 		if (!isParent) return
 	}
 
@@ -568,12 +607,14 @@ async function handleQuestionAsked(
 }
 
 // ==========================================
-// PLUGIN EXPORT
+// NOTIFY RUNTIME（v1/v2 共用核心）
 // ==========================================
 
-const NotifyPlugin: Plugin = async (ctx) => {
-	const { client } = ctx
+interface NotifyRuntimeDeps {
+	getSession: NotifyGetSession
+}
 
+const createNotifyRuntime = async (deps: NotifyRuntimeDeps) => {
 	// Load config once at startup
 	const config = await loadConfig()
 
@@ -941,7 +982,7 @@ const NotifyPlugin: Plugin = async (ctx) => {
 		}
 
 		await handleSessionIdle(
-			client as OpencodeClient,
+			deps.getSession,
 			normalizedSessionID,
 			config,
 			terminalInfo,
@@ -966,61 +1007,141 @@ const NotifyPlugin: Plugin = async (ctx) => {
 		await handlePermissionUpdated(config, terminalInfo, notificationRuntime)
 	}
 
-	return {
-		"tool.execute.before": async (input: { tool: string; sessionID: string; callID: string }) => {
-			if (input.tool === "question") {
-				applyRuntimeSessionStatusTransition(
-					buildCmuxSessionStatusTransitionForQuestionTool(input.sessionID),
-				)
-				await notifyQuestionIfNeeded(buildQuestionToolDedupeKey(input.sessionID, input.callID))
-			}
-		},
-		event: async ({ event }: { event: Event }): Promise<void> => {
-			const runtimeEvent = event as { type: string; properties: Record<string, unknown> }
-			const runtimeSessionStatusTransition = buildCmuxSessionStatusTransitionForEvent(
-				runtimeEvent.type,
-				runtimeEvent.properties,
+	const handleToolBefore = async (input: NotifyToolBeforeEvent): Promise<void> => {
+		if (input.tool === "question") {
+			applyRuntimeSessionStatusTransition(
+				buildCmuxSessionStatusTransitionForQuestionTool(input.sessionID),
 			)
-			applyRuntimeSessionStatusTransition(runtimeSessionStatusTransition)
+			await notifyQuestionIfNeeded(buildQuestionToolDedupeKey(input.sessionID, input.callID))
+		}
+	}
 
-			switch (runtimeEvent.type) {
-				case "session.status":
-				case "session.idle": {
-					if (runtimeSessionStatusTransition?.logicalState === "idle") {
-						await notifySessionReadyIfNeeded(runtimeSessionStatusTransition.sessionID)
-					}
-					break
-				}
-				case "session.error": {
-					const sessionID = toNonEmptyString(runtimeEvent.properties.sessionID)
-					const error = runtimeEvent.properties.error
-					const errorMessage = typeof error === "string" ? error : error ? String(error) : undefined
-					if (sessionID) {
-						await handleSessionError(
-							client as OpencodeClient,
-							sessionID,
-							errorMessage,
-							config,
-							terminalInfo,
-							notificationRuntime,
-						)
-					}
-					break
-				}
+	const handleEvent = async (runtimeEvent: NotifyServerEvent): Promise<void> => {
+		const runtimeSessionStatusTransition = buildCmuxSessionStatusTransitionForEvent(
+			runtimeEvent.type,
+			runtimeEvent.properties,
+		)
+		applyRuntimeSessionStatusTransition(runtimeSessionStatusTransition)
 
-				case "permission.updated":
-				case "permission.asked": {
-					await notifyPermissionIfNeeded(runtimeEvent.properties)
-					break
+		switch (runtimeEvent.type) {
+			case "session.status":
+			case "session.idle": {
+				if (runtimeSessionStatusTransition?.logicalState === "idle") {
+					await notifySessionReadyIfNeeded(runtimeSessionStatusTransition.sessionID)
 				}
-				case "question.asked": {
-					const dedupeKey = buildQuestionEventDedupeKey(runtimeEvent.properties)
-					await notifyQuestionIfNeeded(dedupeKey)
-					break
-				}
+				break
 			}
+			case "session.error": {
+				const sessionID = toNonEmptyString(runtimeEvent.properties.sessionID)
+				const error = runtimeEvent.properties.error
+				const errorMessage = typeof error === "string" ? error : error ? String(error) : undefined
+				if (sessionID) {
+					await handleSessionError(
+						deps.getSession,
+						sessionID,
+						errorMessage,
+						config,
+						terminalInfo,
+						notificationRuntime,
+					)
+				}
+				break
+			}
+
+			case "permission.updated":
+			case "permission.asked": {
+				await notifyPermissionIfNeeded(runtimeEvent.properties)
+				break
+			}
+			case "question.asked": {
+				const dedupeKey = buildQuestionEventDedupeKey(runtimeEvent.properties)
+				await notifyQuestionIfNeeded(dedupeKey)
+				break
+			}
+		}
+	}
+
+	// v2 卸载（abort）时清理常驻 ticker
+	const dispose = (): void => {
+		stopBusyAnimationTicker()
+		stopTitleBusySpinnerTicker()
+	}
+
+	return { handleToolBefore, handleEvent, dispose }
+}
+
+// ==========================================
+// V1 / V2 接线（官方 Support V1：default 同时提供 server() 与 setup()）
+// ==========================================
+
+// v2 事件名归一为 v1 核心认识的事件名（核心只按 v1 语义分流）
+function normalizeV2Event(event: { type: string; data?: unknown }): NotifyServerEvent {
+	const properties =
+		event.data && typeof event.data === "object"
+			? (event.data as Record<string, unknown>)
+			: {}
+	// v2 的 session.execution.failed 承载 v1 session.error 的 {sessionID, error}
+	if (event.type === "session.execution.failed") {
+		return { type: "session.error", properties }
+	}
+	return { type: event.type, properties }
+}
+
+// v1：返回 hook 对象
+async function notifyServerV1(input: { client: OpencodeClient }) {
+	const runtime = await createNotifyRuntime({
+		getSession: async (sessionID) => {
+			const session = await input.client.session.get({ path: { id: sessionID } })
+			return session.data
+				? { title: session.data.title, parentID: session.data.parentID }
+				: undefined
 		},
+	})
+
+	return {
+		"tool.execute.before": async (event: NotifyToolBeforeEvent) =>
+			runtime.handleToolBefore(event),
+		event: async ({ event }: { event: { type: string; properties: Record<string, unknown> } }) =>
+			runtime.handleEvent({ type: event.type, properties: event.properties }),
 	}
 }
 
-export default NotifyPlugin
+// v2：注册 hook，返回清理函数
+async function notifySetupV2(ctx: V2NotifyContext) {
+	const runtime = await createNotifyRuntime({
+		getSession: async (sessionID) => {
+			const session = await ctx.session.get({ sessionID })
+			return session ? { title: session.title, parentID: session.parentID } : undefined
+		},
+	})
+
+	await ctx.tool.hook("execute.before", (event) =>
+		runtime.handleToolBefore({ tool: event.tool, sessionID: event.sessionID, callID: event.id }),
+	)
+
+	const controller = new AbortController()
+	void (async () => {
+		try {
+			for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+				await runtime.handleEvent(normalizeV2Event(event))
+			}
+		} catch (error) {
+			if (!controller.signal.aborted) {
+				console.warn("[notify] event subscription stopped:", error)
+			}
+		}
+	})()
+
+	return () => {
+		controller.abort()
+		runtime.dispose()
+	}
+}
+
+export default {
+	id: "notify",
+	setup: notifySetupV2,
+	async server(input: { client: OpencodeClient }) {
+		return notifyServerV1(input)
+	},
+}

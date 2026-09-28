@@ -5,3 +5,6 @@ node_modules/
 # archify: upstream dev test harness + generated HTML renders (regenerable)
 skills/archify/test/
 skills/archify/examples/*.html
+
+# test-env: 本地 mock 编译产物（由 scripts/mock.sh 重建）
+skills/test-env/assets/mock/bin/

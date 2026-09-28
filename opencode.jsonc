@@ -1,8 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["superpowers@git+https://github.com/obra/superpowers.git"],
   "lsp": true,
-  "instructions": ["~/.config/opencode/memory-mechanism.md"],
   "permission": {
     "lsp": "allow",
     "skill": "allow",
@@ -10,8 +8,14 @@
     "question": "allow",
     
     "*": "allow",
-    "git stash": "deny",
-    "git push": "deny",
-    "rm": "deny",
+    "bash": {
+      "*": "allow",
+      "git stash": "deny",
+      "git stash *": "deny",
+      "git push": "deny",
+      "git push *": "deny",
+      "rm": "deny",
+      "rm *": "deny"
+    }
   }
 }

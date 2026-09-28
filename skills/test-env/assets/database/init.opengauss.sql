@@ -37,6 +37,32 @@ GRANT ALL ON SCHEMA public TO test_user;
 ALTER USER test_user SET search_path TO public;
 
 -- =====================================================================
+-- Block 2b: RB 平台业务库（edge / log 各自独立库，对齐 Deployment init_db.sh）
+-- 用户/库名/密码与生产一致；表由各服务 EnsureSchema 启动自建
+-- =====================================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rb_edge_service') THEN
+        CREATE USER rb_edge_service WITH LOGIN PASSWORD 'Test@12345678';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'rb_log_service') THEN
+        CREATE USER rb_log_service WITH LOGIN PASSWORD 'Test@12345678';
+    END IF;
+END
+$$;
+
+CREATE DATABASE IF NOT EXISTS rb_edge OWNER rb_edge_service DBCOMPATIBILITY = 'PG';
+CREATE DATABASE IF NOT EXISTS rb_log OWNER rb_log_service DBCOMPATIBILITY = 'PG';
+
+\c rb_edge
+GRANT ALL ON SCHEMA public TO rb_edge_service;
+ALTER USER rb_edge_service SET search_path TO public;
+
+\c rb_log
+GRANT ALL ON SCHEMA public TO rb_log_service;
+ALTER USER rb_log_service SET search_path TO public;
+
+-- =====================================================================
 -- Block 3: 调整配置参数（与 MySQL 对称）
 -- 注意：openGauss 不支持 work_mem，已删除
 -- =====================================================================

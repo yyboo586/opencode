@@ -85,7 +85,7 @@ export async function sendMacOSAlerterNotification(
 		// Alerter exits only after the user interacts with or dismisses the notification.
 		// Observe failures without blocking the OpenCode hook that triggered it.
 		void process.exited.then(
-			(exitCode) => {
+			(exitCode: number) => {
 				if (exitCode !== 0) {
 					warn(`notify: macOS desktop notification exited with code ${exitCode}.`)
 				}

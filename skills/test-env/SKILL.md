@@ -1,6 +1,6 @@
 ---
 name: test-env
-description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Mongo、Redis、Nacos、EMQX 测试环境。资源全部在 assets/，目录自包含。触发：起环境 / 部署测试环境 / 启动 mysql / 启动 nacos / 启动 redis / 启动 opengauss / 启动 tidb / 启动 mongo / 启动 emqx / 环境状态 / 停环境
+description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Mongo、Redis、Nacos、EMQX、Jaeger 测试环境，以及本地 mock（endpoint/http/device-sim）。资源全部在 assets/，目录自包含。触发：起环境 / 部署测试环境 / 启动 mysql / 启动 nacos / 启动 redis / 启动 opengauss / 启动 tidb / 启动 mongo / 启动 emqx / 启动 jaeger / 链路追踪环境 / 启动 mock / 起 endpoint mock / 起 http mock / device-sim / 设备模拟器 / 环境状态 / 停环境
 ---
 
 # test-env
@@ -20,9 +20,12 @@ description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Mongo、Redi
 | "启动 redis" | 检测 → 启动 Redis（已运行则跳过） |
 | "启动 mongo" / "起个 mongo" | 检测 → 启动 Mongo（认证模式，已运行则跳过） |
 | "启动 emqx" / "部署 emqx" | 检测 → 启动 EMQX（已运行则跳过） |
+| "启动 jaeger" / "部署 jaeger" / "链路追踪环境" | 检测 → 启动 Jaeger（已运行则跳过） |
+| "启动 mock" / "起 endpoint mock" / "起 http mock" | 检测 → 启动 endpoint(9096) + http(9999) mock（已运行则跳过） |
+| "起设备模拟器" / "device-sim" | 检测 EMQX → 启动 device-sim（可带 `-- -device dev001 -interval 5s` 参数） |
 | "环境状态" / "看看环境" | 运行 `scripts/status.sh` 查看所有组件 |
 | "停环境" / "关环境" | 确认后运行 `scripts/down.sh`（只停本脚本部署的实例，不碰用户已有容器） |
-| "起环境" / 未指定组件 | 启动全部组件（数据库 + Redis + Nacos + EMQX） |
+| "起环境" / 未指定组件 | 启动全部组件（数据库 + Redis + Nacos + EMQX + Jaeger） |
 
 > **组件详情**（端口、用户名、密码、DSN、输出模板）见 `references/connection-info.md`，仅在需要输出连接信息时才加载。
 
@@ -107,6 +110,30 @@ bash .opencode/skills/test-env/scripts/emqx.sh
 
 无前置依赖，与其他组件互不耦合。Docker 镜像为 `emqx/emqx:5.2.0`，端口配置参考 Deployment 仓库 `1.7.1/sh/install_emqx.sh`，区别仅在去掉 `rbnetwork` 自定义网络，改用 `localhost` 直连以适配 test-env 跨组件场景。
 
+### Jaeger
+
+```
+bash .opencode/skills/test-env/scripts/jaeger.sh
+```
+
+脚本内置：已运行则跳过；已停止则 `docker start` 复用；不存在则创建（固定容器名 jaeger，OTLP gRPC 4317 / OTLP HTTP 4318 / UI 16686）。启动后 60s 内轮询 `/api/services`。
+
+无前置依赖，与其他组件互不耦合。Docker 镜像为 `jaegertracing/all-in-one:1.62.0`，内存存储（无持久化卷，重启数据清零）。业务服务把 OTLP/HTTP 上报地址配成 `http://localhost:4318/v1/traces` 即可入库（示例见组内 rbruleserver `[tracing]` 配置）。
+
+### 本地 Mock 服务（endpoint / http / device-sim）
+
+```
+bash .opencode/skills/test-env/scripts/mock.sh up                        # endpoint :9096 + http :9999（默认）
+bash .opencode/skills/test-env/scripts/mock.sh up device-sim             # 设备模拟器（连 EMQX，需 emqx.sh 已起）
+bash .opencode/skills/test-env/scripts/mock.sh up device-sim -- -interval 1s -devices 10
+bash .opencode/skills/test-env/scripts/mock.sh up --force                # 源码改动后重建容器
+bash .opencode/skills/test-env/scripts/mock.sh down / status
+```
+
+- 源码在 `assets/mock/`（说明见其 `README.md`）：endpoint 替代 rbendpoint、http 替代 DU + 远端 IoT、device-sim 模拟设备上报/收指令。
+- 部署形态：宿主 Go 静态编译到 `assets/mock/bin/` → alpine 容器（固定名 `mock-endpoint` / `mock-http` / `mock-device-sim`，host 网络），脚本内置端口就绪轮询。
+- 与 `platform/local/` compose 的 `local-mock-*` 容器端口互斥（9096/9999），勿同时运行；endpoint mock 的 `pb/` 与 rbEdgeServer proto 生成物需同步。
+
 ## Step 3: 健康确认
 
 所有部署脚本已内置超时等待 + 健康检查轮询。脚本返回成功即组件就绪，AI 不重复检查。
@@ -121,7 +148,7 @@ bash .opencode/skills/test-env/scripts/emqx.sh
 
 ### 查看状态
 
-运行 `bash .opencode/skills/test-env/scripts/status.sh`，输出表格：组件 | 容器 | 状态 | 端口。
+运行 `bash .opencode/skills/test-env/scripts/status.sh`，输出表格：组件 | 容器 | 状态 | 端口（含 Mock 容器）。
 
 ### 停止环境
 
@@ -129,7 +156,7 @@ bash .opencode/skills/test-env/scripts/emqx.sh
 
 确认后运行 `bash .opencode/skills/test-env/scripts/down.sh`。
 
-> 数据库数据卷会删除，下次启动重新初始化。Redis 和 Nacos 无持久化卷，仅停止容器。
+> 数据库数据卷会删除，下次启动重新初始化。Redis 和 Nacos 无持久化卷，仅停止容器。Mock 容器（mock-endpoint / mock-http / mock-device-sim）一并清理。
 
 ## 部署后访问（docker exec）
 

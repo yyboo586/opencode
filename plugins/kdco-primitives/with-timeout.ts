@@ -72,7 +72,7 @@ export async function withTimeout<T>(
 
 	// Race between the promise and a timeout
 	// Clear timer when promise resolves to prevent leaks
-	let timeoutId: Timer
+	let timeoutId: ReturnType<typeof setTimeout>
 	return Promise.race([
 		promise.finally(() => clearTimeout(timeoutId)),
 		new Promise<never>((_, reject) => {

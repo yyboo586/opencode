@@ -8,11 +8,13 @@
 | 条目 | 职责 | 版本管理 |
 |------|------|---------|
 | `AGENTS.md` | AI 行为约束（跨项目通用规则，所有项目生效） | git |
-| `memory-mechanism.md` | 记忆协同机制全文（AGENTS.md 独立，经 `instructions` 每次会话注入） | git |
+| `memory-mechanism.md` | 记忆协同机制全文（不再常驻注入；AGENTS.md §1.4 触发，读写记忆前按需读） | git |
 | `README.md` | 事实说明（本文件，目录结构唯一真相源） | git |
 | `skills/` | 用户级技能（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
 | `commands/` | 用户级命令（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
-| `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（`instructions` 字段引用 memory-mechanism.md） | 本地 |
+| `plugins/` | 本地插件（memory-sync / notify / system-prompt-logger / tool-stats，单文件双兼容 v1/v2；支撑目录：`kdco-primitives/`（`index.ts` 已改名禁用）、`notify/`、`tool-stats/`（报表 + 文档 + 历史脚本）） | git |
+| `tsconfig.json` | 编辑器类型检查（插件 .ts 用；依赖 devDependencies 的 `@types/node`、`@types/bun`，`npm i` 维护） | git |
+| `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（原 plugins 数组项已本地化为 `plugins/system-prompt-logger.ts`） | 本地 |
 
 > 2026-08-05 起 skills/commands 为实体目录（由原软链接改为实体），所有项目共用一份，无项目级副本。
 >

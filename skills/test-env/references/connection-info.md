@@ -75,6 +75,30 @@ openGauss 容器一次部署会按 `DBCOMPATIBILITY` 自动创建 3 个同 user 
 | 控制台 | `http://localhost:18083` |
 | 网络 | bridge，端口直连 `localhost` |
 
+### Jaeger
+
+| 属性 | 值 |
+|------|-----|
+| OTLP gRPC 端口 | 4317 |
+| OTLP HTTP 端口 | 4318 |
+| UI 端口 | 16686 |
+| 版本 | 1.62.0（all-in-one） |
+| 存储 | 内存（无持久化卷，重启数据清零） |
+| 控制台 | `http://localhost:16686` |
+| 网络 | bridge，端口直连 `localhost` |
+
+### 本地 Mock（endpoint / http / device-sim）
+
+| 属性 | 值 |
+|------|-----|
+| endpoint | `:9096`（gRPC，替代 rbendpoint；返回 code=200，打印 type/topic/payload_bytes） |
+| http | `:9999`（替代 DU + 远端 IoT；`/device/serial` 返回 device-id，其余返回 `{code:200}` / 空数组） |
+| device-sim | 无监听端口；连 `127.0.0.1:1883` 上报 `v1/gateway/{device}/data`（默认 dev001 / 5s / 持续） |
+| 容器 | `mock-endpoint` / `mock-http` / `mock-device-sim`（host 网络，由 `scripts/mock.sh` 管理） |
+| 源码 | `assets/mock/`（宿主 Go 编译，`--force` 重建） |
+
+> endpoint/http 是 rbEdgeServer 本地联调依赖（其启动台账见该仓 `.opencode/memory/run-local.md`）；与 `platform/local/` compose 的 `local-mock-*` 端口互斥。
+
 ## 数据库连接命令 & Go DSN
 
 | 数据库 | 连接命令（默认连 `test_db` / `test_db_oracle`） | Go DSN（3 openGauss 库全列） |
@@ -183,4 +207,20 @@ MQTT 连接命令:
 
 Go SDK:
   使用 eclipse/paho，broker = "tcp://localhost:1883"
+```
+
+### Jaeger
+
+```
+Jaeger 1.62.0 已就绪（OTLP 4317/4318 / UI 16686）
+
+连接信息:
+  UI:        http://localhost:16686（按服务名搜索，查看链路瀑布图）
+  OTLP/gRPC: localhost:4317
+  OTLP/HTTP: localhost:4318（上报路径 /v1/traces）
+  存储:      内存（重启清零）
+
+Go SDK:
+  使用 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp，
+  endpoint = "http://localhost:4318/v1/traces"
 ```

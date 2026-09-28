@@ -25,3 +25,13 @@ docker ps --filter "name=^mongo$" --format "{{.Names}}  {{.Status}}  {{.Ports}}"
 echo ""
 echo "=== EMQX ==="
 docker ps --filter "name=^emqx$" --format "{{.Names}}  {{.Status}}  {{.Ports}}" 2>/dev/null || echo "  无运行中的 EMQX"
+
+echo ""
+echo "=== Jaeger ==="
+docker ps --filter "name=^jaeger$" --format "{{.Names}}  {{.Status}}  {{.Ports}}" 2>/dev/null || echo "  无运行中的 Jaeger"
+
+echo ""
+echo "=== Mock（endpoint/http/device-sim）==="
+for n in mock-endpoint mock-http mock-device-sim; do
+    docker ps --filter "name=^$n$" --format "{{.Names}}  {{.Status}}" 2>/dev/null || true
+done
