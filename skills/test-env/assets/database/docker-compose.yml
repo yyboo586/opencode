@@ -7,7 +7,7 @@
 # 密码统一：Test@1234（TiDB 使用 root 免密）
 #
 # ── 平台适配说明 ──
-# 统一使用 opengauss:7.0.0-RC3 镜像，Linux / WSL / ARM64 UMA 均可直接使用。
+# 统一使用 opengauss:7.0.0 镜像（LTS），Linux / WSL / ARM64 UMA 均可直接使用。
 #   docker compose up -d
 #
 # ── 三个数据库后端 ──
@@ -52,7 +52,7 @@ services:
 
   opengauss:
     container_name: opengauss
-    image: opengauss:7.0.0-RC3
+    image: opengauss:7.0.0
     environment:
       GS_PASSWORD: Test@1234
     ports:

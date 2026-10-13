@@ -11,6 +11,10 @@ echo "=== 数据库（compose: mysql/opengauss/tidb/mongo）==="
 docker compose -f "$DB_COMPOSE" ps 2>/dev/null || echo "  无运行中的数据库"
 
 echo ""
+echo "=== TXSQL（tdsql 内核替身）==="
+docker ps -a --filter "name=^txsql$" --format "{{.Names}}  {{.Status}}  {{.Ports}}" 2>/dev/null || echo "  无 txsql 容器"
+
+echo ""
 echo "=== Redis ==="
 docker ps --filter "name=^redis$" --format "{{.Names}}  {{.Status}}  {{.Ports}}" 2>/dev/null || echo "  无运行中的 Redis"
 

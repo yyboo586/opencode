@@ -19,6 +19,7 @@ description: 部署/启动/停止/查看 MySQL、openGauss、TiDB、Mongo、Redi
 | "启动 nacos" / "部署 nacos" | 先确认 openGauss 已运行 → 启动 Nacos |
 | "启动 redis" | 检测 → 启动 Redis（已运行则跳过） |
 | "启动 mongo" / "起个 mongo" | 检测 → 启动 Mongo（认证模式，已运行则跳过） |
+| "启动 txsql" / "部署 tdsql" / "tdsql 测试环境" | 检测 → 启动 TXSQL（MySQL 协议 TDSQL 内核替身，已运行则跳过） |
 | "启动 emqx" / "部署 emqx" | 检测 → 启动 EMQX（已运行则跳过） |
 | "启动 jaeger" / "部署 jaeger" / "链路追踪环境" | 检测 → 启动 Jaeger（已运行则跳过） |
 | "启动 mock" / "起 endpoint mock" / "起 http mock" | 检测 → 启动 endpoint(9096) + http(9999) mock（已运行则跳过） |
@@ -67,6 +68,20 @@ bash .opencode/skills/test-env/scripts/db.sh up          # 全部
 ```
 
 `db.sh` 已封装：docker compose up -d + 健康检查轮询（MySQL/TiDB/Mongo 60-90s，openGauss 180s）+ 初始化。AI 不重复实现健康检查。
+
+### TXSQL（TDSQL 内核替身）
+
+```
+bash .opencode/skills/test-env/scripts/txsql.sh
+```
+
+脚本内置：镜像缺省时从工作区 `/mnt/d/platform/txsql-mysql_8.0.30.img` docker load（可用 `TXSQL_IMG` 指定路径）；已运行则跳过；已停止则复用；不存在则创建（固定容器名 txsql、端口 3307）。90s 内轮询 mysqladmin ping。root=Test@1234，首次启动自动兜底建 test_db（utf8mb4）。
+
+用途：TDSQL 主备形态的 MySQL 协议替身（TXSQL = TencentDB for MySQL / TDSQL 的开源内核，100% 兼容原生 MySQL 8.0）。executor 包 MySQL 分支对 TDSQL 的兼容性验证以此为基准。
+
+> ⚠️ **容器内交互客户端必崩（2026-10-09 实证）**：`docker exec -it txsql mysql` 打印 banner 后 SIGSEGV——镜像客户端内嵌 libedit 调 `tgetstr` 指针被 32 位截断，仅交互路径触发，任何 TERM 均复现。连接此库请用宿主机客户端 `mysql -h127.0.0.1 -P3307 -uroot -p'Test@1234'`；容器内临时用 `mysql -e "SQL"` 或 `docker exec -e TERM=emacs -it ...` 绕过（详见全局 skill `tdsql-ops`）。
+
+### 本地 Mock 服务（endpoint / http / device-sim）
 
 ### Redis
 
@@ -175,7 +190,7 @@ bash .opencode/skills/test-env/scripts/mock.sh down / status
 
 ### openGauss 特例（`gsql` 不在 PATH）
 
-镜像 `opengauss:7.0.0-RC3` 启动时未把 `/usr/local/opengauss/bin` 加到 `PATH`，`gsql` 必须用**绝对路径** + 显式 `LD_LIBRARY_PATH`，否则会报 `command not found` 或 `libpq.so.*: cannot open`。
+镜像 `opengauss:7.0.0`（LTS）启动时未把 `/usr/local/opengauss/bin` 加到 `PATH`，`gsql` 必须用**绝对路径** + 显式 `LD_LIBRARY_PATH`，否则会报 `command not found` 或 `libpq.so.*: cannot open`。
 
 ```bash
 # ❌ 失败：找不到命令

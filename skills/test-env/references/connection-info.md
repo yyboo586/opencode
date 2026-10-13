@@ -10,6 +10,7 @@
 | opengauss | 5432 | test_user | Test@1234 | test_db_oracle (Oracle 兼容) |
 | tidb | 4000 | test_user | Test@1234 | test_db |
 | mongo | 27017 | test_user（rbiot 库）/ admin（root） | Test@12345678 | rbiot |
+| txsql（tdsql 内核替身） | 3307 | root | Test@1234 | test_db（脚本兜底建） |
 
 > 密码源定义在 `assets/database/docker-compose.yml`（自包含；与仓库 `06-数据库/MySQL/scripts/docker-compose.yml`、`06-数据库/openGauss/scripts/docker-compose.yml`、`06-数据库/TiDB/scripts/docker-compose.unistore.yml` 同步）。
 >
@@ -38,7 +39,7 @@ openGauss 容器一次部署会按 `DBCOMPATIBILITY` 自动创建 3 个同 user 
 >
 > ⚠️ openGauss `CREATE DATABASE` 不显式指定 `DBCOMPATIBILITY` 时，**默认 `'A'` (Oracle 兼容)**（见 init SQL L20 注释）。显式建库建议始终写明 `DBCOMPATIBILITY`。
 
-> ⚠️ **容器内 gsql 调用约定**：`opengauss:7.0.0-RC3` 镜像的 `gsql` 不在 PATH，且依赖 `LD_LIBRARY_PATH=/usr/local/opengauss/lib`。必须用绝对路径并带 `LD_LIBRARY_PATH`，详见 SKILL.md §部署后访问（docker exec）。
+> ⚠️ **容器内 gsql 调用约定**：`opengauss:7.0.0`（LTS）镜像的 `gsql` 不在 PATH，且依赖 `LD_LIBRARY_PATH=/usr/local/opengauss/lib`。必须用绝对路径并带 `LD_LIBRARY_PATH`，详见 SKILL.md §部署后访问（docker exec）。
 
 ### Redis
 
@@ -109,6 +110,7 @@ openGauss 容器一次部署会按 `DBCOMPATIBILITY` 自动创建 3 个同 user 
 | opengauss (`test_db_pg`) | 同上，`-d test_db_pg` | `postgres://test_user:Test@1234@localhost:5432/test_db_pg` |
 | tidb | `mysql -h 127.0.0.1 -P 4000 -u test_user -p'Test@1234' test_db`（宿主机客户端；TiDB 容器内无 mysql CLI） | `test_user:Test@1234@tcp(localhost:4000)/test_db?charset=utf8mb4&parseTime=True` |
 | mongo | `docker exec -it mongo mongo -u test_user -p 'Test@12345678' --authenticationDatabase rbiot rbiot` | `mongodb://test_user:Test@12345678@localhost:27017/rbiot?authSource=rbiot` |
+| txsql（tdsql 内核替身） | `docker exec -it txsql mysql -uroot -p'Test@1234' test_db` | `root:Test@1234@tcp(localhost:3307)/test_db?charset=utf8mb4&loc=UTC&parseTime=true` |
 
 > **Mongo URI 无 authSource 的默认行为**：mongo-driver 默认 authSource=URI 中的库名（即 `rbiot`），与 test_user 所在库一致，业务侧可省略 authSource；但显式写上更稳（防库名变更踩坑）。admin/root 管理操作必须 `--authenticationDatabase admin`。
 

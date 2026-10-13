@@ -79,12 +79,11 @@ FORWARD_CONTENT='forwardurl: "/api/local/run_scene"
 forwardhost: "127.0.0.1"
 forwardhttp: "http://"'
 
-# SQL(openGauss) 连接配置（repo-sql-migration 阶段二；test-env 指向 test_db_pg 影子表库）
-DATABASE_CONTENT='host: 127.0.0.1
-port: 5432
-user: test_user
-password: Test@1234
-databasename: test_db_pg
+# SQL(openGauss) 连接配置（2026-10-10 起 dsn 直填透传形态：driver+dsn 两字段，
+# 服务零拼装透传 Executor；dsn 中密码走 URL percent-encode——pgx 分支无运行时转义，
+# Test@1234 → Test%401234；test-env 指向 test_db_pg 影子表库）
+DATABASE_CONTENT='driver: pgx
+dsn: "postgres://test_user:Test%401234@127.0.0.1:5432/test_db_pg?sslmode=disable"
 maxopenconns: 50
 maxidleconns: 10
 connmaxlife: 1800'
@@ -102,12 +101,9 @@ sites: []'
 
 # rbiotserver DbConfig：database.NewDb + MustInitExecutorFromConfig + TTL 三服务。
 # maxdatalife 必填且 >30（database.go:106/152 panic）；maxforeverydatalife<=0 时 forever TTL 跳过。
-# 注意与组 1 database 词表不同（无 maxopenconns 等池键，有 maxdatalife）。
-RB_DATABASE_CONTENT='host: 127.0.0.1
-port: 5432
-user: test_user
-password: Test@1234
-databasename: test_db_pg
+# 2026-10-10 起 dsn 直填透传形态（driver+dsn；密码 URL percent-encode，同组 1）。
+RB_DATABASE_CONTENT='driver: pgx
+dsn: "postgres://test_user:Test%401234@127.0.0.1:5432/test_db_pg?sslmode=disable"
 maxdatalife: 60
 maxforeverydatalife: 720'
 

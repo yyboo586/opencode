@@ -6,11 +6,11 @@
 # 2026-06-26 简化：原 WSL 检测逻辑已无意义——
 #   - 6.0.5 时代 WSL 需要 healthcheck 覆盖（gsql 不在 PATH），用 docker-compose.wsl.yml
 #   - 主 compose 修复后已含全路径 healthcheck，wsl.yml 变成内容冗余
-#   - 切到 7.0.0-rc3 + 删除 wsl.yml 后，Linux / WSL / ARM64 配置一致
+#   - 切到 7.0.0 + 删除 wsl.yml 后，Linux / WSL / ARM64 配置一致
 detect_compose_cmd() {
     local script_dir="$1"
     COMPOSE_CMD="docker compose"
-    echo "[INFO] 使用 opengauss:7.0.0-RC3 镜像"
+    echo "[INFO] 使用 opengauss:7.0.0 镜像"
     export COMPOSE_CMD
 }
 
