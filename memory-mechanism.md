@@ -2,11 +2,12 @@
 
 > 本文件管"会话记忆存哪、怎么读写、什么能进什么不能进"，**不再全会话常驻注入**——按 AGENTS.md §1.4 触发：读写 `<cwd>/.opencode/` 前先读本文件。目录与工作区事实见 `README.md`。
 
-## 三层记忆
+## 四层记忆
 
 | 层 | 位置 | 内容 | frontmatter type |
 |----|------|------|------------------|
-| 索引 | `<cwd>/.opencode/MEMORY.md` | Memory / Tracking 两节索引 | `reference` |
+| 索引 | `<cwd>/.opencode/MEMORY.md` | Memory / Tracking 两节索引；Tracking 只放进行中 | `reference` |
+| 归档 | `<cwd>/.opencode/archive/MEMORY-ARCHIVE.md` | 已闭环任务条目；只追加，文档不搬 | `reference` |
 | 记忆 | `<cwd>/.opencode/memory/` | 项目是什么 / 怎么工作（深度事实，基本不变） | `reference` |
 | 任务 | `<cwd>/.opencode/tracking/` | 正在做什么 / 做到哪了（任务专题 + Q-A 经历） | `debug` / `design` / `analysis` |
 
@@ -15,8 +16,10 @@
 
 ## MEMORY.md 索引规则
 
-- 结构：`## Memory — 项目事实与参考`（含历史文档索引与已闭环条目，不单设"已处理"小节）+ `## Tracking — 进行中`。
-- 条目只存**文档路径 + 1 行状态词**（如"待决策 / 已修复 / 已闭环"）；禁止写结论、数据、摘要（差异数字、PID、命令、归因表、拍板依据都是文档内容）——细节去条目指向的文档里读。
+- 结构：`## Memory — 项目事实与参考`（含历史文档索引）+ `## Tracking — 进行中`；闭环条目进 `archive/MEMORY-ARCHIVE.md`，不留在 Tracking。
+- 条目只存**文档路径 + 1 行状态词**（如"进行中 / 待决策"）；禁止写结论、数据、摘要（差异数字、PID、命令、归因表、拍板依据都是文档内容）——细节去条目指向的文档里读。
+- Tracking 只允许 active 状态：`进行中 / 待决策 / 待实测 / 待验证 / 待板测 / 待烟测 / 待执行 / 待用户审核` 等。`已闭环 / 已结案 / 已修复 / 已处理 / 已完成 / 已归档 / 已回撤` 必须移到 archive。
+- archive 条目只允许闭环状态；格式 `- [标题](tracking/xxx.md) — 已闭环 YYYY-MM-DD`，文档仍留 `tracking/` 原址（避免断链）。
 - Tracking 条目两种形态，按**是否含代码**判定（与内容类型无关）：无代码的分析/排障/设计 → 引 `tracking/` 文档；含代码的工程专项 → 引专项目录 `README.md`（子任务文档与代码同址）。
 - 派生子任务不独立成条，挂总任务条目下作缩进子项（一句话状态 + 路径）；Memory 节同主题文档同样归并为总条目 + 子项。
 - 判定与迁移：有未闭环事项 → 留在 Tracking；全部闭环 → 条目移入 Memory 节（**移动，不删除**；闭环子任务同理）。新增记忆文档时同步更新索引。
@@ -25,7 +28,7 @@
 
 - 形成新认知 / 任务有进展 → **即时**更新 tracking/ 或 memory/ 并同步索引，不等会话结束。
 - 会话结束时未完成任务必须留在 tracking/，索引保留其路径，保证下次会话可续接。
-- 任务完成：文档**保留原地** + frontmatter `status` 标完成；索引条目移入 Memory 节。**不删除、不默认移入 memory/**——未完成态下 tracking 文档是分析过程（根因/实测证据/被否选项）的唯一载体；仅"项目是什么/怎么工作"类深度事实才移入 memory/（例外动作，非默认）。
+- 任务完成：文档**保留原地** + frontmatter `status` 标完成；索引条目从 Tracking 移入 `archive/MEMORY-ARCHIVE.md`。**不删除、不默认移入 memory/**——未完成态下 tracking 文档是分析过程（根因/实测证据/被否选项）的唯一载体；仅"项目是什么/怎么工作"类深度事实才移入 memory/（例外动作，非默认）。
 - 索引引用的文件路径变化 → 同步修正索引。
 
 ## tracking 文档约定
@@ -37,6 +40,14 @@
   - **重新打开**（status 改回进行中）：恢复过程记录模式，二次排障过程照常落盘。
 - **经历型**（Q-A 会话蒸馏产出，无生命周期，写出即完成）：frontmatter `type` + `repo` + `tags` + `date`，不强制 status。
 - 完成态文档的后续修正：追加 `### 更正 (YYYY-MM-DD)` 段说明修正内容与原因，**不覆盖原文**（适用于完成态留存内容：决策/现状）。
+
+## 硬约束（确定性，不靠模型自觉）
+
+- 单一实现：`session-viewer/cmd/memory-lint`（Go），规则见 `internal/memory`。插件、pre-commit、session-viewer 面板共用同一套判定。
+- L1 提交门（可选）：仓库 `.githooks/pre-commit` 调用 `memory-lint --repo <root>`；Practice 当前不启用（2026-10-20 移除），提交前可手动跑 `memory-lint --repo .`。
+- L2 写入门：全局插件 `plugins/memory-guard.ts` 按 `MEMORY.md` 文件 hash 比对，覆盖 edit/write/shell/execute 间接写；新增错误回滚并把违规列表返回给模型。
+- 先开再清理：历史欠账写入 `.opencode/memory-lint-baseline.json`；默认只拦**新增**错误。清理后跑 `memory-lint --repo . --write-baseline` 收缩基线；`--strict` 忽略基线。
+- 规则要点：条目一行 ≤300 字符、无子 bullet、链接必须存在且不得逃逸仓库、Tracking 只放 active、闭环进 archive、同一路径不得重复、tracking/memory 文档应有 frontmatter `type/date`。
 
 ## 与 openspec 的边界
 
@@ -54,5 +65,5 @@
 
 ## Git 透明
 
-- 记忆层（MEMORY.md / memory/ / tracking/）默认由 `.opencode/.gitignore` 排除（忽略规则放该文件，随目录复制即生效），**禁止 commit**。
+- 记忆层（MEMORY.md / archive/ / memory/ / tracking/）默认由 `.opencode/.gitignore` 排除（忽略规则放该文件，随目录复制即生效），**禁止 commit**。
 - 例外：Practice 仓库记忆层随 Git 归档，其余仓库维持透明；归属事实见 README.md。

@@ -12,7 +12,7 @@
 | `README.md` | 事实说明（本文件，目录结构唯一真相源） | git |
 | `skills/` | 用户级技能（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
 | `commands/` | 用户级命令（实体目录，所有项目共享；**openspec 系列除外**，见下） | git |
-| `plugins/` | 本地插件（memory-sync / notify / system-prompt-logger / tool-stats，单文件双兼容 v1/v2；支撑目录：`kdco-primitives/`（`index.ts` 已改名禁用）、`notify/`、`tool-stats/`（报表 + 文档 + 历史脚本）） | git |
+| `plugins/` | 本地插件（memory-sync / memory-guard / notify / system-prompt-logger / tool-stats，单文件双兼容 v1/v2；支撑目录：`kdco-primitives/`（`index.ts` 已改名禁用）、`notify/`、`tool-stats/`（报表 + 文档 + 历史脚本）） | git |
 | `tsconfig.json` | 编辑器类型检查（插件 .ts 用；依赖 devDependencies 的 `@types/node`、`@types/bun`，`npm i` 维护） | git |
 | `opencode.jsonc` / `node_modules/` | opencode 运行时配置与依赖（原 plugins 数组项已本地化为 `plugins/system-prompt-logger.ts`） | 本地 |
 
@@ -44,6 +44,7 @@
 | 条目 | 内容 |
 |------|------|
 | `MEMORY.md` | 跨会话持久记忆索引 |
+| `archive/` | 已闭环任务条目（`MEMORY-ARCHIVE.md`）；文档仍留 `tracking/` |
 | `memory/` | 学习参考知识 + 深度文档 |
 | `tracking/` | Q-A 会话记录（knowledge/design/analysis/debug 类型） |
 
@@ -58,10 +59,11 @@
 | 层 | 位置 | 归属 |
 |----|------|------|
 | 索引 `MEMORY.md` | 项目 `.opencode/` | 项目 |
+| 归档 `archive/` | 项目 `.opencode/` | 项目 |
 | 记忆 `memory/` | 项目 `.opencode/` | 项目 |
 | 任务 `tracking/` | 项目 `.opencode/` | 项目 |
 
 - 项目记忆**永不进入全局仓库**
 
-- **Git 透明（默认）**：三类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`tracking/`、`memory/`
-- **特例：Practice 仓库记忆层（MEMORY.md / memory/ / tracking/）随 Git 归档**（2026-08-18 起），其余仓库维持透明
+- **Git 透明（默认）**：四类文件/目录一律由 `.gitignore` 排除，不入 git。忽略规则放 `.opencode/.gitignore`：`MEMORY.md`、`archive/`、`tracking/`、`memory/`
+- **特例：Practice 仓库记忆层（MEMORY.md / archive/ / memory/ / tracking/）随 Git 归档**（2026-08-18 起），其余仓库维持透明

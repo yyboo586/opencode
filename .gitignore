@@ -8,3 +8,6 @@ skills/archify/examples/*.html
 
 # test-env: 本地 mock 编译产物（由 scripts/mock.sh 重建）
 skills/test-env/assets/mock/bin/
+
+# 编译产物（memory-lint 等）
+/bin/

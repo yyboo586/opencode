@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 // 每轮注入的常驻规则（v1: experimental.chat.system.transform；v2: ctx.session.hook("context")）
-const SYSTEM_RULE = `[记忆协同] 本项目使用 .opencode/ 跨会话记忆（MEMORY.md 索引 + memory/ + tracking/）。
+const SYSTEM_RULE = `[记忆协同] 本项目使用 .opencode/ 跨会话记忆（MEMORY.md 索引 + archive/ + memory/ + tracking/）。
 规则：每次 edit/write/bash 工具执行后，若形成新认知或任务有进展（根因/决策/踩坑/状态变化），
 立即更新对应 tracking/ 或 memory/ 文档并同步 MEMORY.md 索引（详见全局 memory-mechanism.md），
 不等会话结束、不依赖特定动作。无新认知则不动作。`;
@@ -33,8 +33,8 @@ const REMIND_WINDOW_MS = 15_000;
 
 // 认知性触发判定：认知性工具直接命中；bash 仅 commit 类命令命中
 function isReminderTrigger(tool, args) {
-  if (tool === "bash") {
-    const cmd = typeof args?.command === "string" ? args.command : "";
+  if (tool === "bash" || tool === "shell" || tool === "execute") {
+    const cmd = typeof args?.command === "string" ? args.command : typeof args?.code === "string" ? args.code : "";
     return COMMIT_RE.test(cmd);
   }
   return COGNITIVE_TOOLS.has(tool);
