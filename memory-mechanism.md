@@ -48,6 +48,7 @@
 - L2 写入门：全局插件 `plugins/memory-guard.ts` 按 `MEMORY.md` 文件 hash 比对，覆盖 edit/write/shell/execute 间接写；新增错误回滚并把违规列表返回给模型。
 - 先开再清理：历史欠账写入 `.opencode/memory-lint-baseline.json`；默认只拦**新增**错误。清理后跑 `memory-lint --repo . --write-baseline` 收缩基线；`--strict` 忽略基线。
 - 规则要点：条目一行 ≤300 字符、无子 bullet、链接必须存在且不得逃逸仓库、Tracking 只放 active、闭环进 archive、同一路径不得重复、tracking/memory 文档应有 frontmatter `type/date`。
+- 跨仓引用纪律：md 链接只建在本仓库版本管理边界内（索引层由 `link_escape` 强制执行）；跨项目**不引用对方仓库的文档**——不做 md 链接、也不写对方文档路径（纯文本路径同样是耦合，会静默过时），定位粒度到"仓库名 + 领域/案例"为止，文档级定位由对方仓库的索引承担。适用于索引层与 tracking/memory/docs 正文。
 
 ## 与 openspec 的边界
 
