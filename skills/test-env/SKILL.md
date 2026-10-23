@@ -230,6 +230,13 @@ ogsql() {
 
 > 容器内已配 `opengauss` 镜像的 `omm` 超级用户；如果用 `docker exec -u omm ...` 切到 `omm`，命令相同，仅权限更宽（建库/改配置）。
 
+## 与外部命令的边界
+
+- `db-query` 命令只读取本 skill 的 `references/connection-info.md` 和 `scripts/status.sh`，负责“只读查询”；不复制启动、初始化、健康检查逻辑。
+- `build-test --with-db` 只检查 `opengauss`/`txsql` 容器是否运行；未就绪时停止并提示回到本 skill，不自行 `compose up`。
+- `poll-until` 只做通用重复执行/超时/输出收敛，不启动或停止任何组件。
+- 环境生命周期仍由本 skill 负责；外部命令不得另写一套容器名、端口、密码或健康检查。
+
 ## 敏感信息规则
 
-连接信息（含密码）仅在当前 test-env 输出中使用，不写入调查报告、Q-A 文件或其他持久化文档。
+连接信息（含密码）仅在当前 test-env 输出中使用，不写入调查报告、Q-A 文件或其他持久化文档。`db-query` 输出中的密码统一显示为 `***`。
